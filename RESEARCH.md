@@ -66,15 +66,18 @@ insta-dl/
 ├── worker/{index.js,scraper.js}
 ├── public/{index.html,style.css,app.js}
 ├── test/{worker.test.js,live-results.json}
-├── README.md
-└── RESEARCH.md
+├── README.md / RESEARCH.md
+└── LICENSE / NOTICE
 ```
 
 Sequence: browser submit → `POST /api/scrape` → CORS / KV check → Instagram URL validation → `scrapeInstagram` → optional official oEmbed → public embed/page HTML → anonymous GraphQL → verified CDN URL → JSON → UI → direct Instagram CDN video URL (no Cloudflare video streaming). Static assets are served through the Workers assets binding. KV is approximate, not an exact 10/min global limit. Earlier proxy-related research results above are historical, from before the proxy was removed.
 
+
+The current project is published under the Apache License 2.0; see `LICENSE` and `NOTICE`. Third-party upstream projects retain their own licenses.
+
 # Phase 4 — Full code
 
-The repository also contains tests, npm lockfile, and raw results.
+The repository also contains tests, npm lockfile, raw results and the Apache license.
 
 ## `worker/index.js`
 
@@ -264,15 +267,15 @@ export async function scrapeInstagram(raw, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Find direct download links for public Instagram reels and videos with DLSTA.">
-  <title>DLSTA — Save the moments worth keeping</title>
+  <meta name="description" content="Find direct download links for public Instagram reels and videos with dlsta.">
+  <title>dlsta — Save the moments worth keeping</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
   <div class="page-shell">
     <header class="header wrap">
-      <a class="brand" href="./" aria-label="DLSTA home"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a>
+      <a class="brand" href="./" aria-label="dlsta home"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a>
       <nav class="header-nav" aria-label="Main navigation">
         <a href="#how-it-works">How it works</a>
         <a href="https://github.com/mahimmazidul/dlsta" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
@@ -305,8 +308,12 @@ export async function scrapeInstagram(raw, options = {}) {
               <h3>Your video is ready.</h3>
               <p id="caption" class="caption"></p>
               <div class="result-actions">
-                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open video <span aria-hidden="true">↗</span></a>
-                <button id="copy" type="button" class="copy-action">Copy direct link</button>
+                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct video <span aria-hidden="true">↗</span></a>
+              </div>
+              <label class="direct-label" for="direct-url">Direct video link</label>
+              <div class="direct-link-field">
+                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct video link">
+                <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
               <p class="download-note">The video opens directly from Instagram’s CDN. If it plays instead of downloading, use your browser’s save or download option. Links may expire.</p>
             </div>
@@ -326,7 +333,7 @@ export async function scrapeInstagram(raw, options = {}) {
         </div>
       </section>
     </main>
-    <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta.</p></div></footer>
+    <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta. · <a href="https://github.com/mahimmazidul/dlsta/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache 2.0 license ↗</a></p></div></footer>
   </div>
 </body>
 </html>
@@ -337,6 +344,9 @@ export async function scrapeInstagram(raw, options = {}) {
 
 ````css
 :root{color-scheme:dark;--bg:#10120f;--surface:#1a1d18;--line:#32372c;--muted:#9a9f93;--text:#f3f3e9;--accent:#d8efab;--accent-dark:#bcd78d;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;scroll-behavior:smooth}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit}.page-shell{overflow:hidden;background:radial-gradient(ellipse 66% 48% at 50% 4%,#252c1c 0,transparent 75%)}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}.header{height:93px;display:flex;align-items:center;gap:55px;border-bottom:1px solid #30342b}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:800;letter-spacing:-.075em;line-height:1}.brand-dot{color:var(--accent)}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#182014;font-size:22px;font-weight:800;letter-spacing:0}.header-nav{display:flex;gap:28px;color:#b3b9aa;font-size:12px;font-weight:600}.header-nav a{text-decoration:none;transition:color .2s}.header-nav a:hover,.footer a:hover{color:var(--accent)}.header-pill{margin-left:auto;font-size:9px;letter-spacing:.12em;font-weight:700;color:#c6d2b4;border:1px solid #41493b;border-radius:99px;padding:9px 13px;white-space:nowrap}.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#bee28b;box-shadow:0 0 9px #bce582;margin-right:7px;vertical-align:middle}.hero{text-align:center;padding-top:105px;padding-bottom:81px}.eyebrow{font-size:10px;letter-spacing:.17em;font-weight:750;color:#a7b995}.sparkle{font-size:15px;color:var(--accent);vertical-align:middle;margin-right:5px}.hero h1{font-size:clamp(48px,7.2vw,83px);line-height:1.03;letter-spacing:-.065em;font-weight:650;margin:25px 0}.hero h1 em,.section-heading h2 em{font-style:normal;color:var(--accent)}.hero-copy{font-size:15px;line-height:1.75;color:#a9b0a1;max-width:420px;margin:0 auto 43px}.tool-card{background:linear-gradient(150deg,#20241d,#191c17);border:1px solid #3b4235;border-radius:18px;text-align:left;box-shadow:0 22px 80px #0005;max-width:682px;margin:auto;padding:27px}.tool-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.tool-label{font-size:9px;letter-spacing:.14em;font-weight:800;color:#aabe99}.tool-top h2{font-size:19px;letter-spacing:-.03em;margin:7px 0 0;font-weight:650}.step-indicator{font-size:10px;letter-spacing:.1em;color:#747f6c}label{display:block;color:#d7dacd;font-size:11px;font-weight:700;margin-bottom:10px}.input-row{display:flex;align-items:center;gap:8px;padding:6px;background:#11140f;border:1px solid #3b4236;border-radius:11px;transition:border-color .2s}.input-row:focus-within{border-color:#b4d88a;box-shadow:0 0 0 3px #c0e49618}.link-icon{padding-left:11px;color:#9fad98;font-size:20px}input{flex:1;min-width:0;outline:none;border:0;background:transparent;color:var(--text);font:inherit;font-size:13px;padding:11px 3px}input::placeholder{color:#737a6c}button{font-family:inherit}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:20px;border:0;border-radius:8px;padding:15px 18px;background:var(--accent);color:#182014;font-size:12px;font-weight:750;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background .2s,transform .2s}.input-row button:hover,.primary-action:hover{background:#e7f8c3;transform:translateY(-1px)}button:disabled{opacity:.65;cursor:wait}.form-note{display:flex;justify-content:space-between;gap:12px;color:#838e7b;font-size:10px;margin-top:13px}.form-note span span{color:#b9d59d;margin-right:4px}.message{font-size:13px;line-height:1.5;color:#efb4a7}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}.result{display:flex;gap:21px;margin-top:23px;padding-top:22px;border-top:1px solid #3b4235}.result[hidden],.result-image[hidden]{display:none}.result-image{width:130px;min-width:130px;height:160px;border-radius:10px;overflow:hidden;background:#10120f}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0}.result-kicker{font-size:9px;letter-spacing:.12em;font-weight:800;color:#bfdb9e}.result h3{font-size:19px;letter-spacing:-.03em;margin:9px 0}.caption{color:#b9c0b1;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:85px;overflow:auto}.result-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:15px}.primary-action{padding:12px 15px;gap:25px}.copy-action{border:1px solid #59654f;border-radius:8px;background:transparent;color:#e6ecdd;font-size:12px;font-weight:700;padding:11px 14px;cursor:pointer}.copy-action:hover{border-color:var(--accent);color:var(--accent)}.download-note{color:#8e9987;font-size:10px;line-height:1.6;margin:13px 0 0}.hero-footnote{display:flex;align-items:center;justify-content:center;gap:11px;margin-top:31px;color:#7d8b72;font-weight:700;font-size:9px;letter-spacing:.13em}.footnote-line{width:25px;height:1px;background:#505b49}.how-section{border-top:1px solid #2c3228;background:#171a15;padding:78px 0 85px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2{font-size:clamp(30px,4vw,44px);letter-spacing:-.05em;font-weight:650;margin:12px 0 0}.section-heading>p{font-size:12px;line-height:1.7;color:#929b8d;margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:35px}.steps article{border:1px solid #343a2f;border-radius:12px;background:#1b1e19;padding:22px 23px 25px}.step-top{display:flex;justify-content:space-between;align-items:start;color:#7d8877;font-size:10px;letter-spacing:.1em}.step-icon{display:grid;place-items:center;width:37px;height:37px;background:#2b3425;border:1px solid #3c4b32;border-radius:10px;color:var(--accent);font-size:20px}.steps h3{font-size:14px;margin:23px 0 9px}.steps p{font-size:12px;line-height:1.7;color:#949d8e;margin:0;max-width:230px}.footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:#828b7d;margin:9px 0 0}.footer-right{text-align:right}.footer-right a{text-decoration:none;color:#ccd9bf}.footer a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:700px){.wrap{width:calc(100% - 40px)}.header{height:75px;gap:15px}.header-nav{margin-left:auto;gap:15px}.header-nav a:first-child{display:none}.header-pill{display:none}.hero{padding:78px 0 65px}.hero h1{font-size:clamp(45px,10vw,64px)}.hero-copy{font-size:14px}.tool-card{padding:20px}.input-row{flex-wrap:wrap}.input-row input{height:45px}.input-row button{width:100%;justify-content:space-between}.form-note{font-size:9px}.hero-footnote{font-size:8px;letter-spacing:.09em}.footnote-line{width:14px}.section-heading{display:block}.section-heading>p{margin-top:15px}.steps{grid-template-columns:1fr;gap:11px}.steps article{padding:19px}.steps h3{margin-top:15px}.how-section{padding:60px 0}.footer{align-items:flex-start;flex-direction:column}.footer-right{text-align:left}.result-image{width:92px;min-width:92px;height:130px}.result{gap:14px}.result-actions>*{width:100%}.copy-action{padding:12px}}@media(max-width:380px){.result{flex-direction:column}.result-image{width:100%;height:180px}.form-note span:last-child{display:none}}
+
+/* Link and direct-URL presentation */
+.header-nav a{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:8px 3px;text-underline-offset:4px}.header-nav a:hover{text-decoration:underline}.header-nav a:last-child{border:1px solid #454f3e;padding:8px 12px;background:#1b2019;color:#d9e5ce}.header-nav a:last-child:hover{border-color:#b8d797;text-decoration:none}.footer-right a{color:#d8efab;text-decoration:underline;text-decoration-color:#6c8660;text-underline-offset:4px;overflow-wrap:anywhere}.caption{overflow-wrap:anywhere;word-break:break-word}.result-body{width:100%}.result-actions{margin-bottom:16px}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:10px;letter-spacing:.02em}.direct-link-field{display:flex;align-items:center;gap:0;min-width:0;max-width:100%;border:1px solid #4b5644;border-radius:9px;background:#12160f;overflow:hidden}.direct-link-field:focus-within{border-color:#b4d88a;box-shadow:0 0 0 3px #c0e49618}.direct-link-field input{width:0;min-width:0;flex:1;font-size:11px;color:#c9d7bd;padding:12px;text-overflow:ellipsis}.direct-link-field .copy-action{flex:none;border:0;border-left:1px solid #4b5644;border-radius:0;background:#262e22;color:#e8f0df;padding:12px 14px}.direct-link-field .copy-action:hover{background:#36432c;color:#effddc}@media(max-width:700px){.result-actions .primary-action{width:100%}.direct-link-field .copy-action{width:auto}}
 
 ````
 
@@ -351,6 +361,7 @@ const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
 const copy = document.querySelector('#copy');
+const directInput = document.querySelector('#direct-url');
 let directUrl = '';
 
 function isAllowedCdnUrl(value) {
@@ -365,6 +376,7 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   result.hidden = true;
   directUrl = '';
+  directInput.value = '';
   message.textContent = '';
   message.dataset.kind = '';
   submit.disabled = true;
@@ -382,6 +394,7 @@ form.addEventListener('submit', async (event) => {
     if (!isAllowedCdnUrl(data.videoUrl)) throw new Error('The video link returned was not a supported Instagram CDN URL.');
     directUrl = data.videoUrl;
     download.href = directUrl; // Direct to Instagram's CDN; the Worker does not proxy video bytes.
+    directInput.value = directUrl;
     const imageWrap = document.querySelector('#image-wrap');
     const image = document.querySelector('#thumbnail');
     imageWrap.hidden = !isAllowedCdnUrl(data.thumbnailUrl);
@@ -396,11 +409,13 @@ copy.addEventListener('click', async () => {
   if (!directUrl) return;
   try {
     await navigator.clipboard.writeText(directUrl);
-    copy.textContent = 'Link copied!';
-    setTimeout(() => { copy.textContent = 'Copy direct link'; }, 2500);
+    copy.textContent = 'Copied!';
+    setTimeout(() => { copy.textContent = 'Copy'; }, 2500);
   } catch {
+    directInput.focus();
+    directInput.select();
     message.dataset.kind = '';
-    message.textContent = 'Could not copy automatically. Press and hold or right-click “Open video” to copy the link.';
+    message.textContent = 'Link selected. Use your device’s copy command to copy it.';
   }
 });
 
@@ -422,6 +437,51 @@ binding = "RATE_LIMIT"
 
 [vars]
 ALLOWED_ORIGINS = "*"
+
+````
+
+## `package.json`
+
+````json
+{
+  "name": "dlsta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "dlsta: Instagram Reels and video downloader with a vanilla JavaScript frontend and Cloudflare Workers API.",
+  "type": "module",
+  "author": {
+    "name": "Md. Mazidul Islam Mahim",
+    "url": "https://github.com/mahimmazidul"
+  },
+  "homepage": "https://github.com/mahimmazidul/dlsta#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mahimmazidul/dlsta.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mahimmazidul/dlsta/issues"
+  },
+  "keywords": [
+    "instagram",
+    "instagram-downloader",
+    "instagram-reels",
+    "video-downloader",
+    "cloudflare-workers",
+    "javascript"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.156.0"
+  },
+  "license": "Apache-2.0"
+}
 
 ````
 
@@ -465,9 +525,16 @@ jobs:
 ## `README.md`
 
 ````markdown
-# DLSTA — Insta DL: Instagram Reels & Video Downloader
+# dlsta — Instagram Reels & Video Downloader
 
 A small Cloudflare Worker + static UI for resolving **public** Instagram videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
+
+## What it does
+
+- Resolves supported **public** Instagram post and reel video links without requiring an Instagram login.
+- Shows the caption and thumbnail when available, plus a direct, selectable video URL and copy button.
+- Opens the video from Instagram's CDN; Cloudflare does **not** stream or proxy the video file.
+- Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
 **Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks video URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
 
@@ -507,6 +574,10 @@ The rate limiter targets **10 API requests per IP per fixed minute**, storing sh
 Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful video lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
+
+## License and credit
+
+[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
 
 ## Verification
 
