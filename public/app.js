@@ -6,6 +6,7 @@ const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
 const copy = document.querySelector('#copy');
+const directInput = document.querySelector('#direct-url');
 let directUrl = '';
 
 function isAllowedCdnUrl(value) {
@@ -20,6 +21,7 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   result.hidden = true;
   directUrl = '';
+  directInput.value = '';
   message.textContent = '';
   message.dataset.kind = '';
   submit.disabled = true;
@@ -37,6 +39,7 @@ form.addEventListener('submit', async (event) => {
     if (!isAllowedCdnUrl(data.videoUrl)) throw new Error('The video link returned was not a supported Instagram CDN URL.');
     directUrl = data.videoUrl;
     download.href = directUrl; // Direct to Instagram's CDN; the Worker does not proxy video bytes.
+    directInput.value = directUrl;
     const imageWrap = document.querySelector('#image-wrap');
     const image = document.querySelector('#thumbnail');
     imageWrap.hidden = !isAllowedCdnUrl(data.thumbnailUrl);
@@ -51,10 +54,12 @@ copy.addEventListener('click', async () => {
   if (!directUrl) return;
   try {
     await navigator.clipboard.writeText(directUrl);
-    copy.textContent = 'Link copied!';
-    setTimeout(() => { copy.textContent = 'Copy direct link'; }, 2500);
+    copy.textContent = 'Copied!';
+    setTimeout(() => { copy.textContent = 'Copy'; }, 2500);
   } catch {
+    directInput.focus();
+    directInput.select();
     message.dataset.kind = '';
-    message.textContent = 'Could not copy automatically. Press and hold or right-click “Open video” to copy the link.';
+    message.textContent = 'Link selected. Use your device’s copy command to copy it.';
   }
 });
