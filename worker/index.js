@@ -31,9 +31,62 @@ async function rateLimit(request, env) {
     return true;
   } catch { throw new Error('LIMIT_UNAVAILABLE'); }
 }
+// On Workers, emit canonical and social URLs for the host that served the page.
+// Static GitHub Pages keeps the default URLs already present in index.html.
+export function renderSeoHtml(html, requestUrl) {
+  const siteUrl = new URL('/', requestUrl).href;
+  const imageUrl = new URL('images/social-card.png', siteUrl).href;
+  const escapeAttribute = value => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
+  html = html.replace(/<link\b[^>]*>/gi, tag => {
+    if (!/\brel=["']canonical["']/i.test(tag)) return tag;
+    return tag.replace(/(\bhref=)(["'])[^"']*\2/i, (_, key, quote) => `${key}${quote}${escapeAttribute(siteUrl)}${quote}`);
+  });
+  const metadata = {'og:url': siteUrl, 'og:image': imageUrl, 'twitter:image': imageUrl};
+  html = html.replace(/<meta\b[^>]*>/gi, tag => {
+    const name = tag.match(/\b(?:property|name)=["']([^"']+)["']/i)?.[1];
+    if (!Object.hasOwn(metadata, name)) return tag;
+    return tag.replace(/(\bcontent=)(["'])[^"']*\2/i, (_, key, quote) => `${key}${quote}${escapeAttribute(metadata[name])}${quote}`);
+  });
+  return html.replace(/(<script\s+type=["']application\/ld\+json["']\s*>)([\s\S]*?)(<\/script>)/i, (match, open, body, close) => {
+    try {
+      const schema = JSON.parse(body);
+      schema.url = siteUrl;
+      schema.image = imageUrl;
+      // Avoid closing the JSON-LD script if any future value contains '<'.
+      return open + JSON.stringify(schema).replace(/</g, '\\u003c') + close;
+    } catch { return match; }
+  });
+}
+
+async function renderHome(request, env) {
+  if (!env.ASSETS) return new Response('Not found', {status: 404});
+  const response = await env.ASSETS.fetch(request);
+  if (!response.ok || request.method === 'HEAD') return response;
+  const html = renderSeoHtml(await response.text(), request.url);
+  const headers = new Headers(response.headers);
+  // The transformed representation has a different body and depends on the host.
+  for (const name of ['content-length', 'content-encoding', 'etag', 'last-modified']) headers.delete(name);
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  return new Response(html, {status: response.status, headers});
+}
+
+function seoFile(request, path) {
+  const siteUrl = new URL('/', request.url).href;
+  const body = path === '/robots.txt'
+    ? `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${siteUrl}sitemap.xml\n`
+    : `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${siteUrl.replace(/&/g, '&amp;')}</loc></url></urlset>\n`;
+  return new Response(request.method === 'HEAD' ? null : body, {headers: {
+    'Content-Type': path === '/robots.txt' ? 'text/plain; charset=utf-8' : 'application/xml; charset=utf-8',
+    'Cache-Control': 'no-store'
+  }});
+}
+
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if ((request.method === 'GET' || request.method === 'HEAD') && (path === '/' || path === '/index.html')) return renderHome(request, env);
+    if ((request.method === 'GET' || request.method === 'HEAD') && (path === '/robots.txt' || path === '/sitemap.xml')) return seoFile(request, path);
     if (!path.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status: 404});
     if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors(request, env)});
     if (path !== '/api/scrape') return json(request, env, 404, {success: false, error: 'Not found.'});
