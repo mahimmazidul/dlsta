@@ -56,6 +56,17 @@ Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
 
+## Search visibility and branding
+
+The default canonical address, social previews, structured data and sitemap use `https://mahimmazidul.github.io/dlsta/`. The existing dlsta mark is provided as an SVG, PNG favicons, an Apple touch icon and web manifest icons; `public/images/social-card.png` is the 1200×630 social preview. API responses send `X-Robots-Tag: noindex, nofollow`.
+
+Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as described above; otherwise the page loads but media lookups cannot work. Search metadata cannot replace a working backend.
+
+1. Deploy the site, then add the URL-prefix property `https://mahimmazidul.github.io/dlsta/` to [Google Search Console](https://search.google.com/search-console/). Verify ownership using an available method, such as adding the supplied HTML verification file to `public/` and redeploying.
+2. Submit `https://mahimmazidul.github.io/dlsta/sitemap.xml` in Search Console and optionally request indexing of the homepage with URL Inspection. Crawling and indexing are not guaranteed and may take time.
+3. The site is in a GitHub Pages **subdirectory**. Search crawlers read `robots.txt` at the **hostname root**, not `dlsta/robots.txt`; the included file applies when the site is hosted at a domain root, such as a Worker/custom domain. Submit the sitemap directly for the GitHub Pages subdirectory. Google generally chooses one search favicon per hostname, so it may not display this project's icon independently for a subdirectory.
+4. If deploying a fork or a different canonical domain, replace the absolute canonical, Open Graph, Twitter and JSON-LD URLs in `public/index.html`, the `<loc>` in `public/sitemap.xml`, and the sitemap URL in `public/robots.txt`. Update the SEO test's canonical URL to match. A duplicate Worker deployment currently points search engines at the GitHub Pages URL intentionally; change these values if the Worker/custom domain should be the primary site.
+
 ## License and credit
 
 [Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
