@@ -36,8 +36,44 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
-// The public embed can include a JSON-encoded contextJSON string. Only use a
-// matching post's structured first media item; never guess that a cover is a photo.
+// Prefer the largest explicitly sized allowlisted rendition, not array order.
+function bestVariant(variants) {
+  if (!Array.isArray(variants)) return '';
+  const valid = variants.filter(v => validMediaUrl(v?.url || v?.src));
+  valid.sort((a, b) => {
+    const area = v => (Number(v.width ?? v.config_width) || 0) * (Number(v.height ?? v.config_height) || 0);
+    return area(b) - area(a) || (Number(b.bitrate || b.bandwidth) || 0) - (Number(a.bitrate || a.bandwidth) || 0);
+  });
+  return valid[0]?.url || valid[0]?.src || '';
+}
+function structuredMedia(root) {
+  const edges = root?.edge_sidecar_to_children?.edges;
+  const carousel = Array.isArray(root?.carousel_media) || Array.isArray(edges) || root?.__typename === 'GraphSidecar';
+  const nodes = Array.isArray(root?.carousel_media) ? root.carousel_media : Array.isArray(edges) ? edges.map(e => e?.node) : carousel ? [] : [root];
+  if (!nodes.length) return null;
+  const reported = Number(root?.carousel_media_count ?? root?.edge_sidecar_to_children?.count) || 0;
+  const totalItems = Math.max(nodes.length, reported);
+  const hasMore = root?.edge_sidecar_to_children?.page_info?.has_next_page === true;
+  const items = nodes.slice(0, 50).map((item, index) => {
+    const isVideo = item?.media_type === 2 || item?.is_video === true || item?.__typename === 'GraphVideo';
+    const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
+    const image = bestVariant([...(Array.isArray(item?.image_versions2?.candidates) ? item.image_versions2.candidates : []), ...(Array.isArray(item?.display_resources) ? item.display_resources : [])]) || (validMediaUrl(item?.display_url) ? item.display_url : '');
+    const video = bestVariant(item?.video_versions) || (validMediaUrl(item?.video_url) ? item.video_url : '');
+    const mediaType = isVideo ? 'video' : isPhoto ? 'photo' : 'unknown';
+    const mediaUrl = isVideo ? video : isPhoto ? image : '';
+    if (!mediaUrl) return {position:index + 1, mediaType, available:false};
+    return {position:index + 1, mediaType, mediaUrl, thumbnailUrl:image, available:true};
+  });
+  const first = items.find(item => item.available);
+  if (!first) return null;
+  const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text;
+  const caption = typeof text === 'string' ? text.slice(0, 2000) : '';
+  const result = {mediaType:first.mediaType, mediaUrl:first.mediaUrl, [first.mediaType === 'photo' ? 'photoUrl' : 'videoUrl']:first.mediaUrl, thumbnailUrl:first.thumbnailUrl, caption};
+  if (carousel) Object.assign(result, {items, totalItems, partial:hasMore || items.length < totalItems || items.some(item => !item.available)});
+  return result;
+}
+
+// Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
 export function parseEmbedMedia(html, shortcode) {
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
@@ -45,18 +81,8 @@ export function parseEmbedMedia(html, shortcode) {
       const data = JSON.parse(JSON.parse(match[1]));
       const root = data?.gql_data?.shortcode_media;
       if (!root || root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) continue;
-      const children = root.edge_sidecar_to_children?.edges;
-      const isCarousel = root.__typename === 'GraphSidecar' || Array.isArray(children);
-      const item = isCarousel ? children?.[0]?.node : root;
-      if (!item) continue;
-      const image = validMediaUrl(item.display_url) ? item.display_url : '';
-      const video = validMediaUrl(item.video_url) ? item.video_url : '';
-      const text = root.edge_media_to_caption?.edges?.[0]?.node?.text;
-      const caption = typeof text === 'string' ? text.slice(0, 2000) : '';
-      const isVideo = item.is_video === true || item.__typename === 'GraphVideo';
-      const isPhoto = item.is_video === false || item.__typename === 'GraphImage';
-      if (isVideo && video) return {mediaType:'video', mediaUrl:video, videoUrl:video, thumbnailUrl:image, caption};
-      if (!isVideo && isPhoto && image) return {mediaType:'photo', mediaUrl:image, photoUrl:image, thumbnailUrl:image, caption};
+      const result = structuredMedia(root);
+      if (result) return result;
     } catch { /* malformed or unrelated embed context: try another */ }
   }
   return null;
@@ -147,17 +173,13 @@ export async function scrapeInstagram(raw, options = {}) {
     if (response.ok) {
       const data = JSON.parse(await readUpstreamText(response));
       const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
-      // Return the first carousel item only; never mistake a video's cover for a photo.
       diagnostic.media = root ? 'no_supported_media' : 'no_item';
-      const item = root?.carousel_media?.[0] || root?.edge_sidecar_to_children?.edges?.[0]?.node || root;
-      const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
-      const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
-      if (validMediaUrl(image)) thumbnailUrl = image;
-      const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption;
-      caption = typeof text === 'string' ? text.slice(0, 2000) : '';
-      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
-      const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
-      if (isPhoto && validMediaUrl(image)) return {mediaType: 'photo', mediaUrl: image, photoUrl: image, thumbnailUrl: image, caption};
+      const result = structuredMedia(root);
+      if (result) {
+        if (!result.caption) result.caption = caption;
+        if (!result.thumbnailUrl) result.thumbnailUrl = thumbnailUrl;
+        return result;
+      }
     }
   } catch (error) { diagnostic[`${currentStage}Error`] = failureKind(error); }
   // Emit only the sanitized stages when the entire lookup fails.
