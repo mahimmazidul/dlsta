@@ -49,7 +49,7 @@ Local `wrangler dev` (not a production deployment), tested 2026-10-30. Public sa
 | TTTT55 standalone Worker | 200, CDN video HEAD 200, **0.53 s** | 400 | 400 | 404 after 1.08 s | **8** (2/3/1/1/1) |
 | New Worker, Wrangler 4.156.0 | 200, CDN video HEAD 200, **1.62 s**; proxy Range request 206 | 400 | 400 | Initial version: 502 | Not scored against source repos |
 
-The nonexistent shortcode was not independently confirmed to be a previously existing deleted post; **no verified private or deleted post was supplied, so those cases were not tested**. Error bodies in these observed tests were messages rather than stack traces; David and TTTT55 can nevertheless expose unexpected error messages on some paths. The current Worker returns direct Instagram CDN links and no longer has a media proxy. The new Worker deliberately distinguishes confirmed invalid input from ambiguous upstream failure and cannot always distinguish private, deleted, restricted, blocked or markup-changed posts. Its four Node unit tests pass, including host spoofing, 10-request behavior in a deterministic KV mock, and removal of the proxy endpoint; the mock does not prove a global KV limit. Local tests do not establish behavior from Cloudflare's production network.
+The nonexistent shortcode was not independently confirmed to be a previously existing deleted post; **no verified private or deleted post was supplied, so those cases were not tested**. Error bodies in these observed tests were messages rather than stack traces; David and TTTT55 can nevertheless expose unexpected error messages on some paths. The current Worker returns direct Instagram CDN links and no longer has a media proxy. The new Worker deliberately distinguishes confirmed invalid input from ambiguous upstream failure and cannot always distinguish private, deleted, restricted, blocked or markup-changed posts. The initial Node unit tests passed, including host spoofing, 10-request behavior in a deterministic KV mock, and removal of the proxy endpoint; the mock does not prove a global KV limit. Local tests do not establish behavior from Cloudflare's production network.
 
 # Phase 3 — Merge plan
 
@@ -59,7 +59,7 @@ The nonexistent shortcode was not independently confirmed to be a previously exi
 - **REFERENCE:** David's API was investigated but not integrated due to external providers and proxy risk.
 
 ```text
-insta-dl/
+dlsta/
 ├── .github/workflows/pages.yml
 ├── wrangler.toml
 ├── package.json / package-lock.json
@@ -80,13 +80,16 @@ The current project is published under the Apache License 2.0; see `LICENSE` and
 
 The current version adds direct links for public photos as well as videos. A NASA photo (`https://www.instagram.com/p/9w42bQoaI1/`) and reel (`https://www.instagram.com/reel/Dbn-XJhk0_-/`) were tested locally: both resolved to allowlisted HTTPS CDN URLs and those URLs returned HTTP 200 to HEAD at the time of testing. Links expire, and upstream or production network behavior may differ. For carousels, only one media item is returned; the UI does not support full-album download.
 
-Responsive layouts were checked in headless Chromium at widths 320, 375, 700, 768, 1024 and 1440 px, including long captions and the result panel. The mobile footer was centered and the paste handler was exercised. The audit also added bounded request/upstream reads and a 503 response when KV fails. `insta-dl` remains the Cloudflare Worker service name for compatibility while the public app and package are named `dlsta`. See the README for one-click deployment instructions and the KV consistency limitations.
+Responsive layouts were checked in headless Chromium at widths 320, 375, 700, 768, 1024 and 1440 px, including long captions and the result panel. The mobile footer was centered and the paste handler was exercised. The audit also added bounded request/upstream reads and a 503 response when KV fails. The configured Cloudflare Worker service name was subsequently changed from `insta-dl` to `dlsta`; see the later host-aware deployment update and README for migration details. See the README for one-click deployment instructions and the KV consistency limitations.
 
 
-A subsequent SEO and branding update introduced the project icon, social preview, canonical URL, sitemap, crawler guidance, and structured data. The default canonical site is the owner's GitHub Pages subdirectory; forks and other primary domains must update the absolute URLs as described in the README. GitHub Pages still requires a configured Worker URL for lookups.
+A subsequent SEO and branding update introduced the project icon, social preview, canonical URL, sitemap, crawler guidance, and structured data. The static default canonical site is the owner's GitHub Pages subdirectory; separate static deployments must update the absolute URLs as described in the README. Combined Worker deployments generate URLs from the active host. GitHub Pages still requires a configured Worker URL for lookups.
 
 
-The combined Worker now uses the service name `dlsta` and generates server-rendered canonical, social-image, structured-data, sitemap and robots URLs from the request host. The separately hosted GitHub Pages copy retains its static default URLs. HTML and crawler-file requests invoke the Worker and count toward Worker usage; media downloads remain direct from Instagram.
+The combined Worker configuration now defaults to the service name `dlsta` and generates server-rendered canonical, social-image, structured-data, sitemap and robots URLs from the request host. The separately hosted GitHub Pages copy retains its static default URLs. HTML and crawler-file requests invoke the Worker and count toward Worker usage; media downloads remain direct from Instagram.
+
+
+Cloudflare Workers Builds can override the configured name with the connected dashboard Worker name; changing the configuration does not rename the existing service. The source repository, any Deploy-button-created copy, and the deployed Cloudflare configuration should be checked separately.
 
 # Phase 4 — Full code
 
@@ -157,15 +160,20 @@ export function renderSeoHtml(html, requestUrl) {
 
 async function renderHome(request, env) {
   if (!env.ASSETS) return new Response('Not found', {status: 404});
-  const response = await env.ASSETS.fetch(request);
-  if (!response.ok || request.method === 'HEAD') return response;
+  // Fetch the full source asset before transforming it. Static-asset ETags and
+  // range responses describe the untransformed file, not our host-aware HTML.
+  const sourceHeaders = new Headers(request.headers);
+  for (const name of ['if-none-match', 'if-modified-since', 'range', 'if-range']) sourceHeaders.delete(name);
+  const sourceRequest = new Request(request, {method: 'GET', headers: sourceHeaders});
+  const response = await env.ASSETS.fetch(sourceRequest);
+  if (!response.ok) return response;
   const html = renderSeoHtml(await response.text(), request.url);
   const headers = new Headers(response.headers);
   // The transformed representation has a different body and depends on the host.
   for (const name of ['content-length', 'content-encoding', 'etag', 'last-modified']) headers.delete(name);
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'no-store');
-  return new Response(html, {status: response.status, headers});
+  return new Response(request.method === 'HEAD' ? null : html, {status: response.status, headers});
 }
 
 function seoFile(request, path) {
@@ -767,23 +775,23 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 1. Create or sign in to your Cloudflare account and sign in to GitHub.
 2. Open **[Deploy dlsta to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/mahimmazidul/dlsta)**. Connect GitHub and authorize the requested access when prompted.
 3. Select the Cloudflare account and follow the prompts to create a repository and configure the Worker. The button typically creates a new repository under your GitHub account; future builds track that new repository, not necessarily this one.
-4. Confirm the `RATE_LIMIT` KV namespace is provisioned and bound. If the UI cannot provision it, use the manual KV instructions below. Choose a distinct Worker name if the suggested name conflicts with an existing Worker.
+4. Confirm the `RATE_LIMIT` KV namespace is provisioned and bound. If the UI cannot provision it, use the manual KV instructions below. Choose `dlsta` as the Worker name in the Cloudflare setup screen (or a distinct name if it conflicts with an existing Worker).
 5. Deploy and wait for the build to finish. Open the provided `https://<worker>.<account>.workers.dev` URL: the Worker serves both the frontend and `/api/scrape`, so no separate frontend configuration is needed there.
 6. Paste a public post or reel URL, choose **Get media link**, and open or copy the direct CDN link. Use your browser’s save option if the media opens in a tab.
 7. If you instead use the separately hosted GitHub Pages frontend, set `WORKER_URL` in `public/app.js` to your deployed HTTPS Worker origin and redeploy Pages, as described below. GitHub Pages cannot run the Worker.
 
-The Worker service name in `wrangler.toml` is **dlsta**, matching the app and package. If you previously deployed `insta-dl`, deploying this configuration creates a **new** `dlsta` Worker; it does not rename or delete the old one. Reconnect any custom domain to the new Worker after testing. If you used the Deploy button earlier, it may have created a separate GitHub repository: update that repository or start a fresh deploy from the current code.
+The default Worker name in `wrangler.toml` is **dlsta**, matching the app and package. This does not rename or delete an existing `insta-dl` Worker. In particular, Cloudflare Workers Builds can override the Wrangler name with the **existing dashboard Worker name**; an existing build connected to `insta-dl` can therefore keep deploying as `insta-dl` even after the file changes. To use `dlsta`, create a new Worker named `dlsta` in Cloudflare and connect it to the current repository (or deploy the latest code manually as described below). Reconnect any custom domain to the new Worker after testing. If you used the Deploy button earlier, it may have created a separate GitHub repository: update that repository or start a fresh deploy from the current code. See [Workers Builds name behavior](https://developers.cloudflare.com/workers/ci-cd/builds/troubleshoot/).
 
 ### Manual deployment (Node.js 22+)
 
 ```sh
 npm ci
 npx wrangler login
-# Recent Wrangler can provision the ID-less RATE_LIMIT binding on deploy.
+# Recent Wrangler provisions the ID-less RATE_LIMIT binding on first deploy.
 npx wrangler deploy
 ```
 
-If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
+Wrangler writes the provisioned namespace ID into the local configuration; dashboard-based provisioning keeps the resource ID in Cloudflare rather than necessarily writing it to your repository. Do not copy another account’s namespace ID. Verify the `RATE_LIMIT` binding on the deployed Worker. If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
 
 ### Add your subdomain
 
@@ -797,7 +805,7 @@ Optional oEmbed: `npx wrangler secret put INSTAGRAM_OEMBED_TOKEN`. Obtain an app
 
 ## Separate frontend
 
-For Cloudflare Pages or GitHub Pages, publish the contents of `public/` as the site root. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages on pushes to `main`. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
+For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the contents of `public/` as the site root. This is a static frontend only: the root `wrangler.toml` configures a **Worker**, not a Pages Functions project. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages on pushes to `main`. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
 
 ## API
 
