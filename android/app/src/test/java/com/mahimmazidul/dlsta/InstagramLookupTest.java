@@ -20,6 +20,7 @@ public class InstagramLookupTest {
     }
     @Test public void inputValidationBlocksUntrustedAndStripsQuery() {
         assertEquals("https://www.instagram.com/p/Example_123/",InstagramLookup.normalize("https://instagram.com/p/Example_123/?utm=abc"));
+        assertEquals("https://www.instagram.com/reel/De3hNM7x4jE/",InstagramLookup.normalize("https://instagram.com/reels/De3hNM7x4jE/?s=1"));
         for(String u:new String[]{"http://instagram.com/p/abc/","https://instagram.com.evil.test/p/abc/","https://x@instagram.com/p/abc/","https://instagram.com:443/p/abc/","https://instagram.com/stories/user/123/"}) {
             try{InstagramLookup.normalize(u);fail("Accepted invalid input");}catch(IllegalArgumentException expected){}
         }

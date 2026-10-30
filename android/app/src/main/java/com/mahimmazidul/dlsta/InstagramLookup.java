@@ -44,9 +44,9 @@ final class InstagramLookup {
             URI u=new URI(raw.trim()); String host=u.getHost();
             if (!"https".equalsIgnoreCase(u.getScheme()) || u.getRawUserInfo()!=null || u.getPort()!=-1 || host==null ||
                 !(host.equalsIgnoreCase("instagram.com") || host.equalsIgnoreCase("www.instagram.com") || host.equalsIgnoreCase("m.instagram.com"))) throw new IllegalArgumentException();
-            Matcher m=Pattern.compile("^/(p|reel|tv)/([A-Za-z0-9_-]{1,32})/?$").matcher(u.getPath());
+            Matcher m=Pattern.compile("^/(p|reel|reels|tv)/([A-Za-z0-9_-]{1,32})/?$").matcher(u.getPath());
             if (!m.matches()) throw new IllegalArgumentException();
-            return "https://www.instagram.com/"+m.group(1)+"/"+m.group(2)+"/";
+            return "https://www.instagram.com/"+(m.group(1).equals("reels")?"reel":m.group(1))+"/"+m.group(2)+"/";
         } catch (Exception ignored) { throw new IllegalArgumentException("Enter a valid Instagram post or reel link."); }
     }
     static Result lookup(String raw) throws Exception { return lookup(raw, InstagramLookup::request); }
