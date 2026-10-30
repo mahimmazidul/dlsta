@@ -22,6 +22,16 @@ For structured public responses, the resolver compares available image and video
 
 A live check on 2026-10-30 returned all 10 items of a sample photo carousel as 1440 × 1921 WebP images. Three sample reels were 720 × 1280 H.264 video; those figures describe the returned files only, not Instagram’s source uploads or all reels. Offline tests also check selection by dimensions and bitrate and reject unsafe URLs. Availability and quality can change.
 
+## Android app (beta)
+
+The Android app reuses the same interface and connects to the existing Worker at `https://d.byaislop.cv`. It requires Android 10 or newer, Android System WebView and an internet connection. Public lookups still use the Worker; media files are fetched directly from Instagram’s CDN by Android and saved to **Downloads/dlsta** without a ZIP or format conversion.
+
+For Android, the app queues carousel files serially with WorkManager and checks its own Downloads entries before saving, so an already-saved item is skipped. It displays queue progress while the app is open. Android may defer background work; expired links, network failures, or removed media can still prevent a download. Clipboard access happens only after tapping Paste or Copy. No private Instagram login or broad file access permission is required.
+
+To build from a phone: open **Actions → Build dlsta Android APK → Run workflow**, select `main`, and wait for the APK and emulator checks. Download the `dlsta-android-apk` artifact from the run, unzip it in your phone’s Files app, then open the APK and allow installation from that source if prompted. This workflow is manual-only and does not run on pushes. GitHub requires signing in to download artifacts, which expire after 30 days.
+
+For update-compatible APKs, the workflow can use `ANDROID_DLSTA_KEYSTORE` (base64-encoded keystore) and `ANDROID_DLSTA_PASSWORD` repository Actions secrets. If these are missing it produces a temporary debug-signed APK; a future build with a different debug key may require uninstalling the older app. Do not commit signing keys or passwords. This is a sideloaded beta, not a Play Store release.
+
 ## Deploy with GitHub Actions (recommended)
 
 The workflow `.github/workflows/cloudflare.yml` tests and deploys the **dlsta Worker and its assets** only when started manually using GitHub Actions. Pushes and GitHub web edits do not trigger it. It uses the checked-in `wrangler.toml`; this is a Workers deployment, not a Pages deployment.
