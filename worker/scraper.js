@@ -24,3 +24,10 @@ function decode(value) {
     .replace(/&amp;/g, '&').replace(/&#0*39;/g, "'").replace(/&quot;/g, '"')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
+function meta(html, name) {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const attr = (key) => tag.match(new RegExp(`\\b${key}\\s*=\\s*["']([^"']*)["']`, 'i'))?.[1];
+    if ((attr('property') || attr('name') || '').toLowerCase() === name) return decode(attr('content'));
+  }
+  return '';
+}
