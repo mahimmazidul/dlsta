@@ -15,13 +15,12 @@ test('Android APK workflow is manual only, builds and runs emulator checks', asy
   assert.match(action,/secrets\.ANDROID_DLSTA_KEYSTORE/);
 });
 
-test('Android WebView bridge limits origins and native queue preserves direct CDN storage', async () => {
+test('Native Android UI and queue validate media and preserve direct CDN storage', async () => {
   const activity=await read('android/app/src/main/java/com/mahimmazidul/dlsta/MainActivity.java');
   const worker=await read('android/app/src/main/java/com/mahimmazidul/dlsta/DownloadWorker.java');
   const manifest=await read('android/app/src/main/AndroidManifest.xml');
-  assert.match(activity,/WebViewCompat\.addWebMessageListener/);
-  assert.match(activity,/!mainFrame/);
-  assert.match(activity,/appassets\.androidplatform\.net/);
+  assert.doesNotMatch(activity,/WebView|addJavascriptInterface/);
+  assert.match(activity,/InstagramLookup\.lookup/);
   assert.match(activity,/MediaRules\.allowedUrl/);
   assert.match(activity,/APPEND_OR_REPLACE/);
   assert.match(worker,/MediaRules\.allowedUrl\(link\)/);

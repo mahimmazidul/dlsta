@@ -7,8 +7,8 @@ android {
         applicationId 'com.mahimmazidul.dlsta'
         minSdk 29
         targetSdk 35
-        versionCode 1
-        versionName '1.0.0-beta.1'
+        versionCode 2
+        versionName '1.0.0-beta.2'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
@@ -28,18 +28,10 @@ android {
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/dlsta-assets')]
     testOptions { unitTests.returnDefaultValues = true }
 }
 
-tasks.register('syncDlstaWeb', Sync) {
-    from('../../public')
-    into(layout.buildDirectory.dir('generated/dlsta-assets/www'))
-}
-tasks.named('preBuild').configure { dependsOn('syncDlstaWeb') }
-
 dependencies {
-    implementation 'androidx.webkit:webkit:1.12.1'
     implementation 'androidx.work:work-runtime:2.10.0'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'

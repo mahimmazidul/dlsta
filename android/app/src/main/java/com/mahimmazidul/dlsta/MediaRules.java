@@ -3,7 +3,7 @@ package com.mahimmazidul.dlsta;
 import java.net.URI;
 import java.util.Locale;
 
-/** Security boundary for every URL and filename received from the WebView. */
+/** Security boundary for every media URL and filename. */
 public final class MediaRules {
     private MediaRules() {}
     public static boolean allowedUrl(String value) {
