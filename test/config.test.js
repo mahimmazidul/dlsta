@@ -25,3 +25,17 @@ test('deployment documentation distinguishes dashboard Worker name and automatic
   assert.match(readme, /does not rename or delete an existing `insta-dl` Worker/);
   assert.doesNotMatch(report, /`insta-dl` remains the Cloudflare Worker service name/);
 });
+
+test('Cloudflare GitHub Action tests and deploys only using repository secrets', async () => {
+  const workflow = await read('.github/workflows/cloudflare.yml');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /branches:\s*\[main\]/);
+  assert.match(workflow, /run: npm ci/);
+  assert.match(workflow, /run: npm test/);
+  assert.match(workflow, /uses: cloudflare\/wrangler-action@v4/);
+  assert.match(workflow, /command: deploy/);
+  assert.match(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.match(workflow, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
+  assert.ok(workflow.indexOf('run: npm test') < workflow.indexOf('uses: cloudflare/wrangler-action@v4'));
+  assert.doesNotMatch(workflow, /pull_request:/);
+});
