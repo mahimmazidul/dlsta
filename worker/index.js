@@ -117,7 +117,10 @@ export default {
         try { raw = JSON.parse(new TextDecoder().decode(bytes))?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
       } else return json(request, env, 405, {success: false, error: 'Method not allowed.'});
       normalizeInstagramUrl(raw);
-      const result = await scrapeInstagram(raw, {oembedToken: env.INSTAGRAM_OEMBED_TOKEN});
+      const result = await scrapeInstagram(raw, {
+        oembedToken: env.INSTAGRAM_OEMBED_TOKEN,
+        onDiagnostic: stages => console.warn('Instagram lookup failed:', JSON.stringify(stages))
+      });
       return json(request, env, 200, {success: true, ...result});
     } catch (error) {
       if (error.message === 'INVALID_URL') return json(request, env, 400, {success: false, error: 'Enter a valid public Instagram post or reel URL.'});
