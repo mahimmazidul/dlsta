@@ -59,3 +59,31 @@ async function proxy(request, env, raw) {
   }}));
   return new Response(body, {status: response.status, headers});
 }
+export default {
+  async fetch(request, env) {
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status: 404});
+    if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors(request, env)});
+    try {
+      if (!await rateLimit(request, env)) return json(request, env, 429, {success: false, error: 'Too many requests. Try again shortly.'}, {'Retry-After': '60'});
+      if (path === '/api/proxy' && request.method === 'GET') return await proxy(request, env, new URL(request.url).searchParams.get('url'));
+      if (path !== '/api/scrape') return json(request, env, 404, {success: false, error: 'Not found.'});
+      let raw;
+      if (request.method === 'GET') raw = new URL(request.url).searchParams.get('url');
+      else if (request.method === 'POST') {
+        if (Number(request.headers.get('content-length')) > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
+        const text = await request.text();
+        if (text.length > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
+        try { raw = JSON.parse(text)?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
+      } else return json(request, env, 405, {success: false, error: 'Method not allowed.'});
+      normalizeInstagramUrl(raw);
+      const result = await scrapeInstagram(raw, {oembedToken: env.INSTAGRAM_OEMBED_TOKEN});
+      return json(request, env, 200, {success: true, ...result});
+    } catch (error) {
+      if (error.message === 'INVALID_URL') return json(request, env, 400, {success: false, error: 'Enter a valid public Instagram post or reel URL.'});
+      if (error.message === 'LIMIT_UNAVAILABLE') return json(request, env, 503, {success: false, error: 'Rate limiting is unavailable.'});
+      if (error.message === 'UNAVAILABLE') return json(request, env, 404, {success: false, error: 'The post is unavailable; it may be private or deleted.'});
+      return json(request, env, 502, {success: false, error: 'Could not retrieve public media. It may be private, deleted, restricted, or temporarily blocked.'});
+    }
+  }
+};
