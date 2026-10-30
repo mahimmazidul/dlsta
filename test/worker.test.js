@@ -141,3 +141,24 @@ test('GraphQL fallback returns all carousel candidates and marks unavailable ite
     assert.equal(result.items[1].available,false); assert.equal(result.totalItems,2); assert.equal(result.partial,true);
   } finally {globalThis.fetch=original;}
 });
+
+
+test('alternate public post embed recovers a reel when its reel embed is unavailable', async () => {
+  const original=globalThis.fetch; const calls=[];
+  const root={shortcode:'reel123',__typename:'GraphVideo',is_video:true,video_url:'https://x.fbcdn.net/video.mp4'};
+  const html=`<script>{"contextJSON":${JSON.stringify(JSON.stringify({context:{shortcode:'reel123'},gql_data:{shortcode_media:root}}))}}</script>`;
+  try {
+    globalThis.fetch=async target => {const u=String(target);calls.push(u);return u.includes('/p/reel123/embed/captioned/') ? new Response(html) : new Response('<html></html>');};
+    const r=await scrapeInstagram('https://instagram.com/reel/reel123/');
+    assert.equal(r.videoUrl,'https://x.fbcdn.net/video.mp4');
+    assert.ok(calls.some(u=>u.includes('/reel/reel123/embed/')));
+    assert.ok(calls.some(u=>u.includes('/p/reel123/embed/')));
+    assert.equal(calls.some(u=>u.includes('/graphql/query')),false);
+  } finally {globalThis.fetch=original;}
+});
+
+test('embed diagnostics describe missing video safely without leaking content', () => {
+  const root={shortcode:'abc',__typename:'GraphVideo',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg'};
+  const html=`<script>{"contextJSON":${JSON.stringify(JSON.stringify({gql_data:{shortcode_media:root}}))}}</script>`;
+  let detail; assert.equal(parseEmbedMedia(html,'abc',value=>{detail=value;}),null);assert.equal(detail,'video_url_missing');
+});
