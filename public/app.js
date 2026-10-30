@@ -13,6 +13,11 @@ const mediaList = document.querySelector('#media-list');
 const mediaCount = document.querySelector('#media-count');
 let directUrl = '';
 
+function updateSubmitLabel() {
+  submit.firstElementChild.textContent = urlInput.value.trim() ? 'Get media link' : 'Paste & get link';
+}
+urlInput.addEventListener('input', updateSubmitLabel);
+
 function isAllowedCdnUrl(value) {
   try {
     const url = new URL(value);
@@ -31,6 +36,20 @@ form.addEventListener('submit', async (event) => {
   submit.disabled = true;
   submit.firstElementChild.textContent = 'Finding your media…';
   try {
+    if (!urlInput.value.trim()) {
+      try {
+        if (!navigator.clipboard?.readText) throw new Error('unavailable');
+        urlInput.value = (await navigator.clipboard.readText()).trim();
+      } catch {
+        urlInput.focus();
+        throw new Error('Clipboard access is unavailable. Paste the Instagram link into the box.');
+      }
+      if (!urlInput.value) { urlInput.focus(); throw new Error('Your clipboard is empty. Copy an Instagram link first.'); }
+      try {
+        const parsed = new URL(urlInput.value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !['instagram.com','www.instagram.com','m.instagram.com'].includes(parsed.hostname.toLowerCase()) || !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(parsed.pathname)) throw new Error('invalid');
+      } catch { urlInput.focus(); throw new Error('Copy a valid public Instagram post or reel link first.'); }
+    }
     if (!WORKER_URL && window.location.hostname.endsWith('.github.io')) {
       throw new Error('The Cloudflare Worker URL is not configured yet. Set WORKER_URL in public/app.js and redeploy.');
     }
@@ -84,7 +103,7 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
   } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
-  finally { submit.disabled = false; submit.firstElementChild.textContent = 'Get media link'; }
+  finally { submit.disabled = false; updateSubmitLabel(); }
 });
 
 copy.addEventListener('click', async () => {
@@ -116,6 +135,7 @@ document.addEventListener('paste', (event) => {
         !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname)) return;
     event.preventDefault();
     urlInput.value = text;
+    updateSubmitLabel();
     urlInput.focus();
   } catch { /* unrelated text is left alone */ }
 });
