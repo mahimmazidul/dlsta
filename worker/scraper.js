@@ -75,13 +75,13 @@ function structuredMedia(root) {
 
 // Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
 export function parseEmbedMedia(html, shortcode, onInspect) {
-  let detail = 'no_context';
+  let detail = /"contextJSON"\s*:\s*null/.test(html) ? 'context_null' : 'no_context';
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
     detail = 'invalid_context';
     try {
       const data = JSON.parse(JSON.parse(match[1]));
-      const root = data?.gql_data?.shortcode_media;
+      const root = data?.gql_data?.shortcode_media || data?.graphql?.shortcode_media || data?.context?.media;
       if (!root) { detail = 'no_media_object'; continue; }
       if (root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) { detail = 'shortcode_mismatch'; continue; }
       const hasVideo = root.media_type === 2 || root.is_video === true || root.__typename === 'GraphVideo';
@@ -91,6 +91,32 @@ export function parseEmbedMedia(html, shortcode, onInspect) {
     } catch { /* malformed or unrelated embed context: try another */ }
   }
   try { onInspect?.(detail); } catch { /* diagnostics are optional */ }
+  return null;
+}
+
+// Some public pages contain structured post data in application/json scripts
+// instead of contextJSON. Search only bounded JSON objects and require the exact
+// target shortcode before accepting any media URL.
+export function parsePublicJsonMedia(html, shortcode) {
+  if (!html.includes('"shortcode"') || !/("video_url"|"video_versions"|"display_url"|"image_versions2")/.test(html)) return null;
+  const scripts = html.matchAll(/<script\b(?=[^>]*\btype\s*=\s*["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi);
+  let examined = 0, count = 0;
+  for (const script of scripts) {
+    if (++count > 40) break;
+    let data;
+    try { data = JSON.parse(script[1]); } catch { continue; }
+    const queue = [data];
+    while (queue.length && examined++ < 5000) {
+      const value = queue.pop();
+      if (!value || typeof value !== 'object') continue;
+      if (value.shortcode === shortcode) {
+        const result = structuredMedia(value);
+        if (result) return result;
+      }
+      for (const child of Object.values(value)) if (child && typeof child === 'object') queue.push(child);
+    }
+    if (examined >= 5000) break;
+  }
   return null;
 }
 
@@ -144,6 +170,8 @@ export async function scrapeInstagram(raw, options = {}) {
   // Instagram accepts both public /reel/ and /p/ embeds for many reels.
   // Try the other form only when the first representation did not provide media.
   if (url.includes('/reel/')) candidates.push(['alternateEmbed', url.replace('/reel/', '/p/') + 'embed/captioned/']);
+  else if (url.includes('/p/')) candidates.push(['alternateEmbed', url.replace('/p/', '/reel/') + 'embed/captioned/']);
+  candidates.push(['plainEmbed', url + 'embed/']);
   candidates.push(['page', url]);
   for (const [stage, candidate] of candidates) {
     try {
@@ -155,6 +183,8 @@ export async function scrapeInstagram(raw, options = {}) {
       diagnostic[`${stage}Context`] = html.includes('\"contextJSON\"') ? 'present' : 'absent';
       const embedded = parseEmbedMedia(html, url.split('/')[4], detail => { diagnostic[`${stage}Detail`] = detail; });
       if (embedded) return embedded;
+      const jsonMedia = parsePublicJsonMedia(html, url.split('/')[4]);
+      if (jsonMedia) return jsonMedia;
       const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
       const image = meta(html, 'og:image') || field(html, 'display_url');
       if (validMediaUrl(image)) thumbnailUrl = image;
