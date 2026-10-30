@@ -3,20 +3,24 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
-  for (const id of ['form', 'message', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title']) {
+  for (const id of ['form', 'message', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
   let copied = '';
   const requests = [];
-  const doc = {events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
+  elements['media-list'].children = [];
+  elements['media-list'].replaceChildren = function() { this.children = []; };
+  elements['media-list'].appendChild = function(child) { this.children.push(child); };
+  const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}});
+  const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
   const context = {URL, window: {location: {hostname}}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }}} : {},
-    fetch: async url => { requests.push(String(url)); return new Response(JSON.stringify(photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})); },
+    fetch: async url => { requests.push(String(url)); return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'}))); },
     setTimeout: () => {}};
   vm.runInNewContext(source, context);
   return {elements, doc, requests, copied: () => copied};
@@ -92,4 +96,16 @@ test('Worker and custom domains call the same-origin API automatically', async (
     assert.equal(requests.length, 1);
     assert.equal(requests[0], '/api/scrape');
   }
+});
+
+
+test('carousel shows all items and updates direct link when selected', async () => {
+  const payload={success:true, mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1.jpg',thumbnailUrl:'https://x.fbcdn.net/1.jpg',caption:'',totalItems:3,partial:false,items:[1,2,3].map(i=>({position:i,mediaType:'photo',available:true,mediaUrl:`https://x.fbcdn.net/${i}.jpg`,thumbnailUrl:`https://x.fbcdn.net/${i}.jpg`}))};
+  const {elements,copied}=await setup({payload});
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['media-list'].children.length,3); assert.equal(elements['media-list'].hidden,false);
+  elements['media-list'].children[2].events.click();
+  assert.equal(elements.download.href,'https://x.fbcdn.net/3.jpg');
+  assert.equal(elements['direct-url'].value,'https://x.fbcdn.net/3.jpg');
+  await elements.copy.events.click(); assert.equal(copied(),'https://x.fbcdn.net/3.jpg');
 });
