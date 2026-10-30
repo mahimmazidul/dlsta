@@ -36,14 +36,27 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
+// Bound the body while reading, rather than checking after allocating it.
+async function readUpstreamText(response, limit = 3_000_000) {
+  if (Number(response.headers.get('content-length')) > limit) throw new Error('UPSTREAM');
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder(); let text = '', size = 0;
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) { await reader.cancel(); throw new Error('UPSTREAM'); }
+    text += decoder.decode(value, {stream: true});
+  }
+  return text + decoder.decode();
+}
 async function upstream(url, accept = 'text/html') {
   const response = await fetch(url, {redirect: 'manual', signal: AbortSignal.timeout(4500), headers: {accept, 'user-agent': 'Mozilla/5.0 (compatible; public-media-fetcher/1.0)'}});
   // Do not follow redirects (including login redirects) or misclassify them as deleted.
   if (response.status === 404) return {status: 404, body: ''};
   if (!response.ok) return {status: response.status, body: ''};
-  const body = await response.text();
-  if (body.length > 3_000_000) throw new Error('UPSTREAM');
-  return {status: response.status, body};
+  return {status: response.status, body: await readUpstreamText(response)};
 }
 
 export async function scrapeInstagram(raw, options = {}) {
@@ -61,7 +74,7 @@ export async function scrapeInstagram(raw, options = {}) {
         const data = JSON.parse(result.body);
         thumbnailUrl = validMediaUrl(data.thumbnail_url) ? data.thumbnail_url : '';
         caption = typeof data.title === 'string' ? data.title.slice(0, 2000) : '';
-        if (validMediaUrl(data.video_url)) return {videoUrl: data.video_url, thumbnailUrl, caption};
+        if (validMediaUrl(data.video_url)) return {mediaType: 'video', mediaUrl: data.video_url, videoUrl: data.video_url, thumbnailUrl, caption};
       }
     } catch { /* fall through to public HTML */ }
   }
@@ -75,7 +88,7 @@ export async function scrapeInstagram(raw, options = {}) {
       const image = meta(html, 'og:image') || field(html, 'display_url');
       if (validMediaUrl(image)) thumbnailUrl = image;
       caption ||= (meta(html, 'og:description') || '').slice(0, 2000);
-      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
     } catch { /* try next representation */ }
   }
   // Unauthenticated web GraphQL is an additional fallback, not oEmbed. Its
@@ -83,7 +96,7 @@ export async function scrapeInstagram(raw, options = {}) {
   try {
     const shortcode = url.split('/')[4];
     const home = await fetch("https://www.instagram.com/", {redirect:"manual", signal:AbortSignal.timeout(3000), headers:{"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}});
-    const homeText = await home.text();
+    const homeText = await readUpstreamText(home);
     const csrf = home.headers.get("set-cookie")?.match(/csrftoken=([^;,\s]+)/)?.[1] || homeText.match(/"csrf_token":"([^"]+)"/)?.[1] || crypto.randomUUID().replaceAll("-", "");
     const body = new URLSearchParams({
       variables: JSON.stringify({shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null, __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false}),
@@ -94,14 +107,18 @@ export async function scrapeInstagram(raw, options = {}) {
       headers: {'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'content-type':'application/x-www-form-urlencoded', 'x-ig-app-id':'936619743392459', 'x-fb-lsd':'AVqbxe3J_YA', 'x-fb-friendly-name':'PolarisPostRootQuery', 'x-requested-with':'XMLHttpRequest', 'accept':'*/*', 'accept-language':'en-US,en;q=0.9', 'sec-fetch-site':'same-origin', 'sec-fetch-mode':'cors', 'sec-fetch-dest':'empty', 'x-asbd-id':'129477', 'x-csrftoken':csrf, 'cookie':`csrftoken=${csrf}; ig_did=${crypto.randomUUID()}; mid=${crypto.randomUUID().replaceAll('-', '')}`, 'origin':'https://www.instagram.com', 'referer':'https://www.instagram.com/'}, body: body.toString()
     });
     if (response.ok) {
-      const data = await response.json();
+      const data = JSON.parse(await readUpstreamText(response));
       const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
-      const item = root?.carousel_media?.find(x => x.video_versions?.length) || root;
+      // Return the first carousel item only; never mistake a video's cover for a photo.
+      const item = root?.carousel_media?.[0] || root?.edge_sidecar_to_children?.edges?.[0]?.node || root;
       const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
       const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
       if (validMediaUrl(image)) thumbnailUrl = image;
-      caption = (root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption).slice(0, 2000);
-      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+      const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption;
+      caption = typeof text === 'string' ? text.slice(0, 2000) : '';
+      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
+      const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
+      if (isPhoto && validMediaUrl(image)) return {mediaType: 'photo', mediaUrl: image, photoUrl: image, thumbnailUrl: image, caption};
     }
   } catch { /* upstream changed or is unavailable */ }
   // A 404 can be a misleading login/anti-bot response: do not claim deletion.
