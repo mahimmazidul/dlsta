@@ -75,6 +75,13 @@ Sequence: browser submit → `POST /api/scrape` → CORS / KV check → Instagra
 
 The current project is published under the Apache License 2.0; see `LICENSE` and `NOTICE`. Third-party upstream projects retain their own licenses.
 
+
+## Subsequent project review
+
+The current version adds direct links for public photos as well as videos. A NASA photo (`https://www.instagram.com/p/9w42bQoaI1/`) and reel (`https://www.instagram.com/reel/Dbn-XJhk0_-/`) were tested locally: both resolved to allowlisted HTTPS CDN URLs and those URLs returned HTTP 200 to HEAD at the time of testing. Links expire, and upstream or production network behavior may differ. For carousels, only one media item is returned; the UI does not support full-album download.
+
+Responsive layouts were checked in headless Chromium at widths 320, 375, 700, 768, 1024 and 1440 px, including long captions and the result panel. The mobile footer was centered and the paste handler was exercised. The audit also added bounded request/upstream reads and a 503 response when KV fails. `insta-dl` remains the Cloudflare Worker service name for compatibility while the public app and package are named `dlsta`. See the README for one-click deployment instructions and the KV consistency limitations.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results and the Apache license.
@@ -106,12 +113,13 @@ async function rateLimit(request, env) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
   const hash = [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('');
   const prefix = `${Math.floor(Date.now() / 60000)}:${hash}:`;
-  const entries = await env.RATE_LIMIT.list({ prefix, limit: LIMIT });
-  if (entries.keys.length >= LIMIT) return false;
-  // Unique keys avoid KV's one-write-per-second-per-key limit. KV is eventually
-  // consistent and the list/put sequence is not atomic: this is best effort.
-  await env.RATE_LIMIT.put(prefix + crypto.randomUUID(), '1', {expirationTtl: 120});
-  return true;
+  try {
+    const entries = await env.RATE_LIMIT.list({ prefix, limit: LIMIT });
+    if (entries.keys.length >= LIMIT) return false;
+    // Unique keys avoid KV's one-write-per-second-per-key limit. This remains approximate.
+    await env.RATE_LIMIT.put(prefix + crypto.randomUUID(), '1', {expirationTtl: 120});
+    return true;
+  } catch { throw new Error('LIMIT_UNAVAILABLE'); }
 }
 export default {
   async fetch(request, env) {
@@ -125,9 +133,20 @@ export default {
       if (request.method === 'GET') raw = new URL(request.url).searchParams.get('url');
       else if (request.method === 'POST') {
         if (Number(request.headers.get('content-length')) > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
-        const text = await request.text();
-        if (text.length > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
-        try { raw = JSON.parse(text)?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
+        const reader = request.body?.getReader();
+        const chunks = []; let size = 0;
+        if (reader) {
+          while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > 4096) { await reader.cancel(); return json(request, env, 413, {success: false, error: 'Request too large.'}); }
+            chunks.push(value);
+          }
+        }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        try { raw = JSON.parse(new TextDecoder().decode(bytes))?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
       } else return json(request, env, 405, {success: false, error: 'Method not allowed.'});
       normalizeInstagramUrl(raw);
       const result = await scrapeInstagram(raw, {oembedToken: env.INSTAGRAM_OEMBED_TOKEN});
@@ -184,14 +203,27 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
+// Bound the body while reading, rather than checking after allocating it.
+async function readUpstreamText(response, limit = 3_000_000) {
+  if (Number(response.headers.get('content-length')) > limit) throw new Error('UPSTREAM');
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder(); let text = '', size = 0;
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) { await reader.cancel(); throw new Error('UPSTREAM'); }
+    text += decoder.decode(value, {stream: true});
+  }
+  return text + decoder.decode();
+}
 async function upstream(url, accept = 'text/html') {
   const response = await fetch(url, {redirect: 'manual', signal: AbortSignal.timeout(4500), headers: {accept, 'user-agent': 'Mozilla/5.0 (compatible; public-media-fetcher/1.0)'}});
   // Do not follow redirects (including login redirects) or misclassify them as deleted.
   if (response.status === 404) return {status: 404, body: ''};
   if (!response.ok) return {status: response.status, body: ''};
-  const body = await response.text();
-  if (body.length > 3_000_000) throw new Error('UPSTREAM');
-  return {status: response.status, body};
+  return {status: response.status, body: await readUpstreamText(response)};
 }
 
 export async function scrapeInstagram(raw, options = {}) {
@@ -209,7 +241,7 @@ export async function scrapeInstagram(raw, options = {}) {
         const data = JSON.parse(result.body);
         thumbnailUrl = validMediaUrl(data.thumbnail_url) ? data.thumbnail_url : '';
         caption = typeof data.title === 'string' ? data.title.slice(0, 2000) : '';
-        if (validMediaUrl(data.video_url)) return {videoUrl: data.video_url, thumbnailUrl, caption};
+        if (validMediaUrl(data.video_url)) return {mediaType: 'video', mediaUrl: data.video_url, videoUrl: data.video_url, thumbnailUrl, caption};
       }
     } catch { /* fall through to public HTML */ }
   }
@@ -223,7 +255,7 @@ export async function scrapeInstagram(raw, options = {}) {
       const image = meta(html, 'og:image') || field(html, 'display_url');
       if (validMediaUrl(image)) thumbnailUrl = image;
       caption ||= (meta(html, 'og:description') || '').slice(0, 2000);
-      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
     } catch { /* try next representation */ }
   }
   // Unauthenticated web GraphQL is an additional fallback, not oEmbed. Its
@@ -231,7 +263,7 @@ export async function scrapeInstagram(raw, options = {}) {
   try {
     const shortcode = url.split('/')[4];
     const home = await fetch("https://www.instagram.com/", {redirect:"manual", signal:AbortSignal.timeout(3000), headers:{"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}});
-    const homeText = await home.text();
+    const homeText = await readUpstreamText(home);
     const csrf = home.headers.get("set-cookie")?.match(/csrftoken=([^;,\s]+)/)?.[1] || homeText.match(/"csrf_token":"([^"]+)"/)?.[1] || crypto.randomUUID().replaceAll("-", "");
     const body = new URLSearchParams({
       variables: JSON.stringify({shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null, __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false}),
@@ -242,14 +274,18 @@ export async function scrapeInstagram(raw, options = {}) {
       headers: {'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'content-type':'application/x-www-form-urlencoded', 'x-ig-app-id':'936619743392459', 'x-fb-lsd':'AVqbxe3J_YA', 'x-fb-friendly-name':'PolarisPostRootQuery', 'x-requested-with':'XMLHttpRequest', 'accept':'*/*', 'accept-language':'en-US,en;q=0.9', 'sec-fetch-site':'same-origin', 'sec-fetch-mode':'cors', 'sec-fetch-dest':'empty', 'x-asbd-id':'129477', 'x-csrftoken':csrf, 'cookie':`csrftoken=${csrf}; ig_did=${crypto.randomUUID()}; mid=${crypto.randomUUID().replaceAll('-', '')}`, 'origin':'https://www.instagram.com', 'referer':'https://www.instagram.com/'}, body: body.toString()
     });
     if (response.ok) {
-      const data = await response.json();
+      const data = JSON.parse(await readUpstreamText(response));
       const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
-      const item = root?.carousel_media?.find(x => x.video_versions?.length) || root;
+      // Return the first carousel item only; never mistake a video's cover for a photo.
+      const item = root?.carousel_media?.[0] || root?.edge_sidecar_to_children?.edges?.[0]?.node || root;
       const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
       const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
       if (validMediaUrl(image)) thumbnailUrl = image;
-      caption = (root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption).slice(0, 2000);
-      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+      const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption;
+      caption = typeof text === 'string' ? text.slice(0, 2000) : '';
+      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
+      const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
+      if (isPhoto && validMediaUrl(image)) return {mediaType: 'photo', mediaUrl: image, photoUrl: image, thumbnailUrl: image, caption};
     }
   } catch { /* upstream changed or is unavailable */ }
   // A 404 can be a misleading login/anti-bot response: do not claim deletion.
@@ -267,7 +303,7 @@ export async function scrapeInstagram(raw, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Find direct download links for public Instagram reels and videos with dlsta.">
+  <meta name="description" content="Find direct links for public Instagram photos, reels and videos with dlsta.">
   <title>dlsta — Save the moments worth keeping</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
@@ -287,35 +323,35 @@ export async function scrapeInstagram(raw, options = {}) {
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="eyebrow"><span class="sparkle" aria-hidden="true">✳</span> YOUR LITTLE CORNER OF THE INTERNET</div>
         <h1 id="hero-title">Good moments<br><em>are worth keeping.</em></h1>
-        <p class="hero-copy">Found a reel you love? Get a direct link to a public Instagram video in just a few clicks.</p>
+        <p class="hero-copy">Found something you love? Get a direct link to a public Instagram photo or video in just a few clicks.</p>
 
         <div class="tool-card">
-          <div class="tool-top"><div><span class="tool-label">THE VIDEO TOOL</span><h2>Let’s find your video.</h2></div><span class="step-indicator">01 / 01</span></div>
+          <div class="tool-top"><div><span class="tool-label">THE MEDIA TOOL</span><h2>Let’s find your media.</h2></div><span class="step-indicator">01 / 01</span></div>
           <form id="form">
             <label for="url">Instagram link</label>
             <div class="input-row">
               <span class="link-icon" aria-hidden="true">↗</span>
               <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url" required>
-              <button id="submit" type="submit"><span>Get video link</span><span aria-hidden="true">↗</span></button>
+              <button id="submit" type="submit"><span>Get media link</span><span aria-hidden="true">↗</span></button>
             </div>
             <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
           </form>
           <div id="message" class="message" role="status" aria-live="polite"></div>
-          <article id="result" class="result" hidden aria-label="Video result">
-            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram video" referrerpolicy="no-referrer"></div>
+          <article id="result" class="result" hidden aria-label="Media result">
+            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer"></div>
             <div class="result-body">
               <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
-              <h3>Your video is ready.</h3>
+              <h3 id="result-title">Your media is ready.</h3>
               <p id="caption" class="caption"></p>
               <div class="result-actions">
-                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct video <span aria-hidden="true">↗</span></a>
+                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
-              <label class="direct-label" for="direct-url">Direct video link</label>
+              <label class="direct-label" for="direct-url">Direct media link</label>
               <div class="direct-link-field">
-                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct video link">
+                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct media link">
                 <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
-              <p class="download-note">The video opens directly from Instagram’s CDN. If it plays instead of downloading, use your browser’s save or download option. Links may expire.</p>
+              <p class="download-note">Media opens directly from Instagram’s CDN. Use your browser’s save or download option. Links may expire.</p>
             </div>
           </article>
         </div>
@@ -326,8 +362,8 @@ export async function scrapeInstagram(raw, options = {}) {
         <div class="wrap">
           <div class="section-heading"><div><div class="eyebrow">THE SIMPLE STUFF</div><h2>Three steps. <em>That’s it.</em></h2></div><p>No accounts, no complicated setup.<br>Just a link and a little magic.</p></div>
           <div class="steps">
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel or video and copy its link.</p></article>
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the video.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel, video, or photo post and copy its link.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the media.</p></article>
             <article><div class="step-top"><span class="step-icon" aria-hidden="true">↓</span><span>03</span></div><h3>Save your find</h3><p>Open the direct link and save it, with the creator’s permission.</p></article>
           </div>
         </div>
@@ -348,6 +384,9 @@ export async function scrapeInstagram(raw, options = {}) {
 /* Link and direct-URL presentation */
 .header-nav a{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:8px 3px;text-underline-offset:4px}.header-nav a:hover{text-decoration:underline}.header-nav a:last-child{border:1px solid #454f3e;padding:8px 12px;background:#1b2019;color:#d9e5ce}.header-nav a:last-child:hover{border-color:#b8d797;text-decoration:none}.footer-right a{color:#d8efab;text-decoration:underline;text-decoration-color:#6c8660;text-underline-offset:4px;overflow-wrap:anywhere}.caption{overflow-wrap:anywhere;word-break:break-word}.result-body{width:100%}.result-actions{margin-bottom:16px}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:10px;letter-spacing:.02em}.direct-link-field{display:flex;align-items:center;gap:0;min-width:0;max-width:100%;border:1px solid #4b5644;border-radius:9px;background:#12160f;overflow:hidden}.direct-link-field:focus-within{border-color:#b4d88a;box-shadow:0 0 0 3px #c0e49618}.direct-link-field input{width:0;min-width:0;flex:1;font-size:11px;color:#c9d7bd;padding:12px;text-overflow:ellipsis}.direct-link-field .copy-action{flex:none;border:0;border-left:1px solid #4b5644;border-radius:0;background:#262e22;color:#e8f0df;padding:12px 14px}.direct-link-field .copy-action:hover{background:#36432c;color:#effddc}@media(max-width:700px){.result-actions .primary-action{width:100%}.direct-link-field .copy-action{width:auto}}
 
+/* Center the stacked footer on phones. */
+@media(max-width:700px){.footer{align-items:center;text-align:center}.footer-right{text-align:center}.footer-brand .brand{justify-content:center}}
+
 ````
 
 ## `public/app.js`
@@ -362,6 +401,7 @@ const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
+const urlInput = document.querySelector('#url');
 let directUrl = '';
 
 function isAllowedCdnUrl(value) {
@@ -380,29 +420,33 @@ form.addEventListener('submit', async (event) => {
   message.textContent = '';
   message.dataset.kind = '';
   submit.disabled = true;
-  submit.firstElementChild.textContent = 'Finding your video…';
+  submit.firstElementChild.textContent = 'Finding your media…';
   try {
     if (!WORKER_URL && window.location.hostname.endsWith('.github.io')) {
       throw new Error('The Cloudflare Worker URL is not configured yet. Set WORKER_URL in public/app.js and redeploy.');
     }
     const response = await fetch(`${WORKER_URL}/api/scrape`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: document.querySelector('#url').value.trim()})
+      body: JSON.stringify({url: urlInput.value.trim()})
     });
     const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to find a video. Please try again.');
-    if (!isAllowedCdnUrl(data.videoUrl)) throw new Error('The video link returned was not a supported Instagram CDN URL.');
-    directUrl = data.videoUrl;
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to find media. Please try again.');
+    const mediaUrl = data.mediaUrl || data.videoUrl;
+    if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
+    const mediaType = data.mediaType === 'photo' ? 'photo' : 'video';
+    directUrl = mediaUrl;
+    document.querySelector('#result-title').textContent = `Your ${mediaType} is ready.`;
+    download.firstChild.textContent = `Open direct ${mediaType} `;
     download.href = directUrl; // Direct to Instagram's CDN; the Worker does not proxy video bytes.
     directInput.value = directUrl;
     const imageWrap = document.querySelector('#image-wrap');
     const image = document.querySelector('#thumbnail');
     imageWrap.hidden = !isAllowedCdnUrl(data.thumbnailUrl);
     if (!imageWrap.hidden) image.src = data.thumbnailUrl;
-    document.querySelector('#caption').textContent = data.caption || 'Your direct video link is ready to open or copy.';
+    document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
   } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
-  finally { submit.disabled = false; submit.firstElementChild.textContent = 'Get video link'; }
+  finally { submit.disabled = false; submit.firstElementChild.textContent = 'Get media link'; }
 });
 
 copy.addEventListener('click', async () => {
@@ -417,6 +461,25 @@ copy.addEventListener('click', async () => {
     message.dataset.kind = '';
     message.textContent = 'Link selected. Use your device’s copy command to copy it.';
   }
+});
+
+// A paste outside an editable field puts a valid Instagram post URL in the one input.
+// Never intercept paste into another editable control or auto-submit a request.
+document.addEventListener('paste', (event) => {
+  if (event.defaultPrevented) return;
+  const active = document.activeElement;
+  if (active && (active.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName))) return;
+  const text = event.clipboardData?.getData('text/plain')?.trim();
+  if (!text || text.length > 2048) return;
+  try {
+    const url = new URL(text);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        !['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(url.hostname.toLowerCase()) ||
+        !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname)) return;
+    event.preventDefault();
+    urlInput.value = text;
+    urlInput.focus();
+  } catch { /* unrelated text is left alone */ }
 });
 
 ````
@@ -447,7 +510,7 @@ ALLOWED_ORIGINS = "*"
   "name": "dlsta",
   "version": "1.0.0",
   "private": true,
-  "description": "dlsta: Instagram Reels and video downloader with a vanilla JavaScript frontend and Cloudflare Workers API.",
+  "description": "dlsta: direct links for public Instagram photos, reels, and videos with a Cloudflare Workers API.",
   "type": "module",
   "author": {
     "name": "Md. Mazidul Islam Mahim",
@@ -465,6 +528,7 @@ ALLOWED_ORIGINS = "*"
     "instagram",
     "instagram-downloader",
     "instagram-reels",
+    "instagram-photos",
     "video-downloader",
     "cloudflare-workers",
     "javascript"
@@ -525,26 +589,34 @@ jobs:
 ## `README.md`
 
 ````markdown
-# dlsta — Instagram Reels & Video Downloader
+# dlsta — Instagram photo, reel & video downloader
 
-A small Cloudflare Worker + static UI for resolving **public** Instagram videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
+A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
 ## What it does
 
-- Resolves supported **public** Instagram post and reel video links without requiring an Instagram login.
-- Shows the caption and thumbnail when available, plus a direct, selectable video URL and copy button.
-- Opens the video from Instagram's CDN; Cloudflare does **not** stream or proxy the video file.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, only one item is returned; full-album downloading is not supported.
+- Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button.
+- Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. On desktop, paste a supported Instagram URL anywhere outside another editable field to fill the link box.
 - Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
-**Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks video URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
+**Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks direct media URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
 
-## Deploy to Cloudflare
+## Deploy using the Cloudflare button
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mahimmazidul/dlsta)
 
-The deployment flow may prompt for Cloudflare account and KV provisioning. If it cannot provision the namespace, use the manual steps below.
+1. Create or sign in to your Cloudflare account and sign in to GitHub.
+2. Open **[Deploy dlsta to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/mahimmazidul/dlsta)**. Connect GitHub and authorize the requested access when prompted.
+3. Select the Cloudflare account and follow the prompts to create a repository and configure the Worker. The button typically creates a new repository under your GitHub account; future builds track that new repository, not necessarily this one.
+4. Confirm the `RATE_LIMIT` KV namespace is provisioned and bound. If the UI cannot provision it, use the manual KV instructions below. Choose a distinct Worker name if the suggested name conflicts with an existing Worker.
+5. Deploy and wait for the build to finish. Open the provided `https://<worker>.<account>.workers.dev` URL: the Worker serves both the frontend and `/api/scrape`, so no separate frontend configuration is needed there.
+6. Paste a public post or reel URL, choose **Get media link**, and open or copy the direct CDN link. Use your browser’s save option if the media opens in a tab.
+7. If you instead use the separately hosted GitHub Pages frontend, set `WORKER_URL` in `public/app.js` to your deployed HTTPS Worker origin and redeploy Pages, as described below. GitHub Pages cannot run the Worker.
 
-Manual deployment (Node.js 22+):
+The configured Worker service name in `wrangler.toml` is `insta-dl` for deployment compatibility. The app, repository and npm package are named **dlsta**. Changing the service name may create a new Worker or URL; update any separate frontend accordingly.
+
+### Manual deployment (Node.js 22+)
 
 ```sh
 npm ci
@@ -563,15 +635,15 @@ For Cloudflare Pages or GitHub Pages, publish the contents of `public/` as the s
 
 ## API
 
-- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, videoUrl, thumbnailUrl, caption}` on success. Empty `thumbnailUrl` and `caption` mean unavailable.
-- The response contains a direct Instagram CDN video URL. Open or copy it from the UI; video bytes are delivered by Instagram, not proxied through this Worker. Signed CDN URLs expire and may be restricted. Some browsers play the video rather than forcing a download; use the browser’s save or download option.
+- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, mediaType, mediaUrl, thumbnailUrl, caption}` on success, plus `videoUrl` or `photoUrl` for the matching media type. `mediaType` is `video` or `photo`; empty `thumbnailUrl` and `caption` mean unavailable.
+- The response contains a direct Instagram CDN photo or video URL. Open or copy it from the UI; media bytes are delivered by Instagram, not proxied through this Worker. Signed CDN URLs expire and may be restricted. Some browsers play the video rather than forcing a download; use the browser’s save or download option.
 - Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
 
 The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
 
 ## Cloudflare Free plan usage
 
-Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful video lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
+Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
 
