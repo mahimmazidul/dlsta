@@ -41,13 +41,19 @@ public class DownloadIntegrationTest {
             try(Cursor files=resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads._ID},MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"},null)){assertNotNull(files);assertEquals(3,files.getCount());}
         } finally {resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI,MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"});}
     }
-    @Test public void requestedReelLoadsDirectlyOnAndroid() throws Exception {
+    @Test public void requestedReelLoadsAndSavesDirectlyOnAndroid() throws Exception {
+        String prefix="instagram_De3hNM7x4jE";Context context=ApplicationProvider.getApplicationContext();ContentResolver resolver=context.getContentResolver();
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(a->{((EditText)a.findViewById(R.id.url_input)).setText("https://www.instagram.com/reel/DdR7YUOIJl5/?srtk=MTJzOGNpbnp0dXZocQ==");a.findViewById(R.id.lookup_button).performClick();});
-            long deadline=System.currentTimeMillis()+110000;
-            while(System.currentTimeMillis()<deadline){AtomicReference<Boolean> ready=new AtomicReference<>(false);scenario.onActivity(a->ready.set(a.findViewById(R.id.save_button)!=null));if(ready.get())return;String message=read(scenario,R.id.message);if(message.startsWith("Could not")||message.startsWith("Enter a"))fail("Requested reel direct lookup failed: "+message+"; Instagram embed: "+diagnostic("https://www.instagram.com/reel/DdR7YUOIJl5/embed/captioned/"));Thread.sleep(750);}
-            fail("Requested reel lookup timed out");
-        }
+            scenario.onActivity(a->{((EditText)a.findViewById(R.id.url_input)).setText("https://www.instagram.com/reels/De3hNM7x4jE/?utm_source=test");a.findViewById(R.id.lookup_button).performClick();});
+            long deadline=System.currentTimeMillis()+110000;boolean found=false;
+            while(System.currentTimeMillis()<deadline){AtomicReference<Boolean> ready=new AtomicReference<>(false);scenario.onActivity(a->ready.set(a.findViewById(R.id.save_button)!=null));if(ready.get()){found=true;break;}String message=read(scenario,R.id.message);if(message.startsWith("Could not")||message.startsWith("Enter a"))fail("Requested reel direct lookup failed: "+message+"; Instagram embed: "+diagnostic("https://www.instagram.com/reel/De3hNM7x4jE/embed/captioned/"));Thread.sleep(750);}
+            assertTrue("Requested reel should load",found);
+            scenario.onActivity(a->a.findViewById(R.id.save_button).performClick());String first=waitFinished(scenario);assertTrue("Expected one saved reel: "+first,first.contains("1 saved")&&first.contains("0 failed"));
+            try(Cursor files=resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads.SIZE,MediaStore.Downloads.MIME_TYPE},MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"},null)){
+                assertNotNull(files);assertEquals("One reel saved",1,files.getCount());assertTrue(files.moveToFirst());assertTrue("Reel contains bytes",files.getLong(0)>0);assertTrue("Saved file is a video",files.getString(1).startsWith("video/"));
+            }
+            scenario.onActivity(a->a.findViewById(R.id.save_button).performClick());String second=waitFinished(scenario);assertTrue("Repeat should skip saved reel: "+second,second.contains("1 already saved")&&second.contains("0 failed"));
+        } finally {resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI,MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"});}
     }
 
 }
