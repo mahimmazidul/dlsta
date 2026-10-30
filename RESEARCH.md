@@ -97,6 +97,9 @@ A GitHub Actions deployment workflow now tests and deploys the configured `dlsta
 
 Lookup failures now produce a sanitized stage/status diagnostic in Worker logs to help distinguish regional upstream failures. It contains no post URLs, tokens, cookies, captions, response bodies or media links. A real failure from the affected Cloudflare region is still needed to determine its cause.
 
+
+A later regional failure returned HTTP 200 for the embed, page, homepage and GraphQL, but GraphQL contained no item. The resolver now parses matching structured `contextJSON` media from public embeds before GraphQL, with safe first-carousel-item and photo/video checks. Local tests on the reported post and a public reel returned photo and video CDN URLs whose HEAD requests were HTTP 200; results in the affected Cloudflare region still require an on-site test.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -280,6 +283,32 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
+// The public embed can include a JSON-encoded contextJSON string. Only use a
+// matching post's structured first media item; never guess that a cover is a photo.
+export function parseEmbedMedia(html, shortcode) {
+  const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
+  for (const match of contexts) {
+    try {
+      const data = JSON.parse(JSON.parse(match[1]));
+      const root = data?.gql_data?.shortcode_media;
+      if (!root || root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) continue;
+      const children = root.edge_sidecar_to_children?.edges;
+      const isCarousel = root.__typename === 'GraphSidecar' || Array.isArray(children);
+      const item = isCarousel ? children?.[0]?.node : root;
+      if (!item) continue;
+      const image = validMediaUrl(item.display_url) ? item.display_url : '';
+      const video = validMediaUrl(item.video_url) ? item.video_url : '';
+      const text = root.edge_media_to_caption?.edges?.[0]?.node?.text;
+      const caption = typeof text === 'string' ? text.slice(0, 2000) : '';
+      const isVideo = item.is_video === true || item.__typename === 'GraphVideo';
+      const isPhoto = item.is_video === false || item.__typename === 'GraphImage';
+      if (isVideo && video) return {mediaType:'video', mediaUrl:video, videoUrl:video, thumbnailUrl:image, caption};
+      if (!isVideo && isPhoto && image) return {mediaType:'photo', mediaUrl:image, photoUrl:image, thumbnailUrl:image, caption};
+    } catch { /* malformed or unrelated embed context: try another */ }
+  }
+  return null;
+}
+
 // Bound the body while reading, rather than checking after allocating it.
 async function readUpstreamText(response, limit = 3_000_000) {
   if (Number(response.headers.get('content-length')) > limit) throw new Error('UPSTREAM');
@@ -333,6 +362,9 @@ export async function scrapeInstagram(raw, options = {}) {
       if (result.status === 404) { saw404 = true; continue; }
       if (result.status !== 200) continue;
       const html = result.body;
+      diagnostic[`${stage}Context`] = html.includes('\"contextJSON\"') ? 'present' : 'absent';
+      const embedded = parseEmbedMedia(html, url.split('/')[4]);
+      if (embedded) return embedded;
       const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
       const image = meta(html, 'og:image') || field(html, 'display_url');
       if (validMediaUrl(image)) thumbnailUrl = image;
@@ -830,7 +862,7 @@ jobs:
 ````markdown
 # dlsta — Instagram photo, reel & video downloader
 
-A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
+A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public embed/page HTML (including structured embed media when available), then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
 ## What it does
 
