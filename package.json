@@ -2,7 +2,7 @@
   "name": "dlsta",
   "version": "1.0.0",
   "private": true,
-  "description": "dlsta: Instagram Reels and video downloader with a vanilla JavaScript frontend and Cloudflare Workers API.",
+  "description": "dlsta: direct links for public Instagram photos, reels, and videos with a Cloudflare Workers API.",
   "type": "module",
   "author": {
     "name": "Md. Mazidul Islam Mahim",
@@ -20,6 +20,7 @@
     "instagram",
     "instagram-downloader",
     "instagram-reels",
+    "instagram-photos",
     "video-downloader",
     "cloudflare-workers",
     "javascript"
