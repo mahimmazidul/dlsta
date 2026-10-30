@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../worker/index.js';
-import {validMediaUrl, normalizeInstagramUrl, scrapeInstagram, parseEmbedMedia} from '../worker/scraper.js';
+import {validMediaUrl, normalizeInstagramUrl, scrapeInstagram, parseEmbedMedia, parsePublicJsonMedia} from '../worker/scraper.js';
 
 const kv = () => { const keys = new Map(); return {list: async ({prefix}) => ({keys:[...keys.keys()].filter(k => k.startsWith(prefix)).map(name=>({name}))}), put: async (k,v) => keys.set(k,v)}; };
 const env = () => ({RATE_LIMIT: kv()});
@@ -74,7 +74,7 @@ test('failed upstream lookup produces sanitized stage diagnostics without leakin
     };
     const response = await worker.fetch(req('https://instagram.com/p/secretpost/?personal=secret'), env());
     assert.equal(response.status, 502);
-    assert.deepEqual(record, ['Instagram lookup failed:', '{"embed":403,"page":403,"home":200,"graphql":429}']);
+    assert.deepEqual(record, ['Instagram lookup failed:', '{"embed":403,"alternateEmbed":403,"plainEmbed":403,"page":403,"home":200,"graphql":429}']);
     assert.doesNotMatch(JSON.stringify(record), /secretpost|personal|private response|cookie|csrftoken/);
     assert.doesNotMatch(await response.text(), /stack|graphql|429/);
   } finally {globalThis.fetch = originalFetch; console.warn = originalWarn;}
@@ -161,4 +161,32 @@ test('embed diagnostics describe missing video safely without leaking content', 
   const root={shortcode:'abc',__typename:'GraphVideo',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg'};
   const html=`<script>{"contextJSON":${JSON.stringify(JSON.stringify({gql_data:{shortcode_media:root}}))}}</script>`;
   let detail; assert.equal(parseEmbedMedia(html,'abc',value=>{detail=value;}),null);assert.equal(detail,'video_url_missing');
+});
+
+
+test('unavailable context is classified without exposing media or post URL', () => {
+  let detail;
+  assert.equal(parseEmbedMedia('<script>{"contextJSON":null}</script>','abc',x=>{detail=x;}), null);
+  assert.equal(detail, 'context_null');
+});
+
+test('public JSON script fallback requires the target shortcode and direct allowed media', () => {
+  const video={shortcode:'abc',is_video:true,video_url:'https://x.fbcdn.net/video.mp4'};
+  const other={shortcode:'other',is_video:true,video_url:'https://x.fbcdn.net/wrong.mp4'};
+  const page=`<script type="application/json">${JSON.stringify({data:{decoy:other,post:video}})}</script>`;
+  assert.equal(parsePublicJsonMedia(page,'abc').videoUrl,'https://x.fbcdn.net/video.mp4');
+  assert.equal(parsePublicJsonMedia(page,'missing'),null);
+  const cover=`<script type="application/json">${JSON.stringify({shortcode:'abc',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg'})}</script>`;
+  assert.equal(parsePublicJsonMedia(cover,'abc'),null);
+});
+
+test('post can recover from its alternate public reel embed', async () => {
+  const original=globalThis.fetch; const calls=[];
+  const root={shortcode:'abc',__typename:'GraphImage',is_video:false,display_url:'https://x.fbcdn.net/photo.jpg'};
+  const html=`<script>{"contextJSON":${JSON.stringify(JSON.stringify({gql_data:{shortcode_media:root}}))}}</script>`;
+  try {
+    globalThis.fetch=async target=>{const u=String(target);calls.push(u);return u.includes('/reel/abc/embed/captioned/')?new Response(html):new Response('<html></html>');};
+    const r=await scrapeInstagram('https://instagram.com/p/abc/');
+    assert.equal(r.photoUrl,'https://x.fbcdn.net/photo.jpg');assert.ok(calls.some(u=>u.includes('/reel/abc/embed/')));
+  } finally {globalThis.fetch=original;}
 });
