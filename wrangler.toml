@@ -1,0 +1,13 @@
+name = "insta-dl"
+main = "worker/index.js"
+compatibility_date = "2026-10-30"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+
+[vars]
+ALLOWED_ORIGINS = "*"
