@@ -119,6 +119,8 @@ The interface now supports device-aware light and dark modes with a locally save
 
 The result preview is centered above the result details on mobile and desktop. After a successful lookup or an invalid Instagram URL, the input resets to the one-tap paste state; unsupported inputs are rejected before the API request, while other failures retain the link for retry. Input entered during a pending lookup is preserved. Mocked Chromium interaction tests covered dark/light modes and widths 320, 375, 430, 768 and 1440, including two successive lookups, carousel selection, link copying and horizontal overflow.
 
+The preview now supports previous/next buttons, touch swipes, focused keyboard arrows, a position counter and the existing thumbnail selectors. Navigation skips unavailable items, and a placeholder retains controls when a thumbnail is missing. Tests cover both themes, mobile/desktop sizes, vertical scrolling gestures, unavailable media, keyboard use, and direct-link synchronization. The live project website is `https://d.byaislop.cv/`. Repository topics were reviewed against [GitHub Instagram downloader topics](https://github.com/topics/instagram-downloader), [photo downloader topics](https://github.com/topics/instagram-photo-downloader), and [Instagram carousel topics](https://github.com/topics/instagram-carousel) to emphasize the actual public-media and carousel capabilities.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -578,7 +580,13 @@ export async function scrapeInstagram(raw, options = {}) {
           </div>
           <div id="message" class="message" role="status" aria-live="polite"></div>
           <article id="result" class="result" hidden aria-label="Media result">
-            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer"></div>
+            <div class="result-image" id="image-wrap" role="group" aria-roledescription="carousel" aria-label="Media preview" tabindex="-1" hidden>
+              <img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer">
+              <span class="preview-empty" id="preview-empty" hidden>Preview unavailable</span>
+              <button type="button" class="preview-nav preview-prev" id="preview-prev" aria-label="Previous available item" hidden><span aria-hidden="true">‹</span></button>
+              <button type="button" class="preview-nav preview-next" id="preview-next" aria-label="Next available item" hidden><span aria-hidden="true">›</span></button>
+              <span class="preview-counter" id="preview-counter" aria-live="polite" aria-atomic="true" hidden></span>
+            </div>
             <div class="result-body">
               <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
               <h3 id="result-title">Your media is ready.</h3>
@@ -643,7 +651,7 @@ export async function scrapeInstagram(raw, options = {}) {
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 80% 38% at 88% 0%,var(--glow) 0%,transparent 70%),var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}a{color:inherit}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}
 .header{height:92px;display:flex;align-items:center;gap:40px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:700;letter-spacing:-.075em;line-height:1}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--button);color:var(--button-ink);font-size:22px;font-weight:700;letter-spacing:0}.brand-dot{color:var(--accent)}.header-nav{display:flex;gap:28px;margin-left:auto;font-size:12px;color:var(--nav)}.header-nav a{text-decoration:none;transition:color .2s}.header-nav a:hover,.footer a:hover{color:var(--accent)}.theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 11px;border:0;border-radius:8px;background:transparent;color:var(--nav);font-size:11px;font-weight:600;cursor:pointer;transition:color .2s,background .2s}.theme-toggle:hover{background:var(--field);color:var(--ink)}.theme-moon{display:none}:root[data-theme="light"] .theme-sun{display:none}:root[data-theme="light"] .theme-moon{display:block}.status-dot,.note-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
 .hero{padding:105px 0 118px;max-width:790px}.hero-overline,.eyebrow{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--heading-label);margin:0}.hero-overline::before{content:'';display:inline-block;width:19px;height:1px;background:var(--accent);vertical-align:middle;margin-right:10px;opacity:.8}.hero h1{font-size:clamp(55px,8vw,86px);font-weight:600;line-height:.99;letter-spacing:-.065em;margin:26px 0 22px}.hero h1 em,.about-copy h2 em{font-family:var(--serif);font-size:1.17em;font-weight:400;color:var(--accent);letter-spacing:-.025em}.hero-copy{color:var(--muted);font-size:15px;line-height:1.7;margin:0 0 60px}.tool-card{max-width:790px}label{display:block;font-size:11px;font-weight:700;color:var(--label);margin-bottom:11px}input,button{font:inherit}.input-row{display:flex;align-items:stretch;gap:10px}.link-entry{display:flex;align-items:center;gap:13px;min-width:0;flex:1;padding:0 17px;background:var(--field);border:1px solid var(--field-border);border-radius:9px;transition:background .2s,border-color .2s,box-shadow .2s}.link-entry:focus-within{background:var(--field-hover);border-color:var(--field-focus);box-shadow:0 0 0 3px var(--field-shadow)}.link-icon{font-size:16px;color:var(--icon);line-height:1}.input-row input{flex:1;min-width:0;width:100%;height:56px;padding:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:15px}.input-row input::placeholder{color:var(--soft);opacity:1}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:25px;min-height:56px;padding:0 23px;border:0;border-radius:9px;background:var(--button);color:var(--button-ink);font-weight:700;font-size:12px;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background .2s,transform .2s}.input-row button:hover,.primary-action:hover{background:var(--button-hover);transform:translateY(-2px)}.input-row button:active,.primary-action:active{transform:translateY(0)}.input-row button:disabled{opacity:.75;cursor:wait;transform:none}.input-row button:disabled>span:last-child{font-size:0}.input-row button:disabled>span:last-child::after{content:'';display:block;width:12px;height:12px;border:1.5px solid rgba(26,33,22,.3);border-left-color:#1a2116;border-radius:50%;animation:spin .8s linear infinite}.form-note{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--soft);margin-top:17px}.note-dot{width:5px;height:5px;margin-right:6px}.message{font-size:13px;line-height:1.5;color:var(--error)}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}.message[data-kind=loading]{color:var(--muted)}
-.result{display:flex;flex-direction:column;gap:25px;margin-top:46px;animation:rise-in .4s ease both}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{align-self:center;width:min(100%,260px);min-width:0;height:auto;aspect-ratio:4/5;overflow:hidden;background:var(--image-bg);border-radius:8px}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.11em;color:var(--result-label)}.result h3{font-size:23px;letter-spacing:-.045em;line-height:1.2;margin:12px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0}.result-actions .primary-action{min-height:46px}.direct-label{margin:0 0 8px;color:var(--label);font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;padding:0 5px 0 14px;background:var(--field);border:1px solid var(--field-border);border-radius:8px;transition:background .2s,border-color .2s}.direct-link-field:focus-within{background:var(--field-hover);border-color:var(--field-focus)}.direct-link-field input{width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--direct);font-size:11px;padding:14px 0;text-overflow:ellipsis}.copy-action{border:0;border-radius:6px;background:var(--copy-bg);color:var(--accent);font-size:11px;font-weight:700;padding:9px 12px;cursor:pointer;transition:background .2s,color .2s}.copy-action:hover{background:var(--button);color:var(--button-ink)}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.65;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:7px 0 9px}.media-choice{flex:0 0 74px;min-width:0;border:0;background:transparent;color:var(--choice);opacity:.6;padding:0 0 5px;cursor:pointer;transition:opacity .2s,transform .2s}.media-choice:hover{opacity:.9;transform:translateY(-2px)}.media-choice[aria-pressed="true"]{opacity:1;color:var(--accent)}.media-choice[aria-pressed="true"] img{outline:2px solid var(--accent);outline-offset:-2px}.media-choice img{display:block;width:74px;height:70px;object-fit:cover;border-radius:5px}.media-choice span{display:block;padding:7px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.35;transform:none}
+.result{display:flex;flex-direction:column;gap:25px;margin-top:46px;animation:rise-in .4s ease both}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{position:relative;touch-action:pan-y;align-self:center;width:min(100%,260px);min-width:0;height:auto;aspect-ratio:4/5;overflow:hidden;background:var(--image-bg);border-radius:8px}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-image img[hidden],.preview-empty[hidden],.preview-nav[hidden],.preview-counter[hidden]{display:none}.preview-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px}.preview-nav{position:absolute;top:50%;z-index:1;display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(16,20,15,.76);color:#fff;font-size:27px;line-height:1;cursor:pointer;transform:translateY(-50%);transition:background .2s,opacity .2s}.preview-nav:hover:not(:disabled){background:rgba(16,20,15,.95)}.preview-nav:disabled{opacity:.4;cursor:default}.preview-prev{left:12px}.preview-next{right:12px}.preview-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:5px 10px;border-radius:99px;background:rgba(16,20,15,.78);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;white-space:nowrap}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.11em;color:var(--result-label)}.result h3{font-size:23px;letter-spacing:-.045em;line-height:1.2;margin:12px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0}.result-actions .primary-action{min-height:46px}.direct-label{margin:0 0 8px;color:var(--label);font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;padding:0 5px 0 14px;background:var(--field);border:1px solid var(--field-border);border-radius:8px;transition:background .2s,border-color .2s}.direct-link-field:focus-within{background:var(--field-hover);border-color:var(--field-focus)}.direct-link-field input{width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--direct);font-size:11px;padding:14px 0;text-overflow:ellipsis}.copy-action{border:0;border-radius:6px;background:var(--copy-bg);color:var(--accent);font-size:11px;font-weight:700;padding:9px 12px;cursor:pointer;transition:background .2s,color .2s}.copy-action:hover{background:var(--button);color:var(--button-ink)}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.65;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:7px 0 9px}.media-choice{flex:0 0 74px;min-width:0;border:0;background:transparent;color:var(--choice);opacity:.6;padding:0 0 5px;cursor:pointer;transition:opacity .2s,transform .2s}.media-choice:hover{opacity:.9;transform:translateY(-2px)}.media-choice[aria-pressed="true"]{opacity:1;color:var(--accent)}.media-choice[aria-pressed="true"] img{outline:2px solid var(--accent);outline-offset:-2px}.media-choice img{display:block;width:74px;height:70px;object-fit:cover;border-radius:5px}.media-choice span{display:block;padding:7px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.35;transform:none}
 .how-section,.about-section{padding:85px 0 90px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2,.about-copy h2{font-size:clamp(30px,4vw,43px);letter-spacing:-.05em;line-height:1.15;font-weight:600;margin:14px 0 0}.section-heading>p{font-size:12px;color:var(--soft);margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:38px;margin-top:48px}.step-top{font-family:var(--serif);font-size:27px;font-style:italic;color:var(--result-label);line-height:1}.steps h3{font-size:15px;margin:23px 0 10px}.steps p,.about-copy p,.faq p{font-size:13px;line-height:1.8;color:var(--muted);margin:0}.steps p{max-width:270px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{margin-bottom:27px}.about-copy p{margin-bottom:14px}.faq summary{position:relative;list-style:none;cursor:pointer;padding:19px 30px 19px 0;font-size:13px;font-weight:700;line-height:1.5;transition:color .2s}.faq summary:hover{color:var(--accent)}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:15px;color:var(--accent);font-size:20px;font-weight:400}.faq details[open] summary::after{content:'−'}.faq p{padding:0 20px 20px 0}
 .footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:var(--soft);line-height:1.7;margin:9px 0 0}.footer-brand .font-credit{margin-top:12px}.font-credit a{color:var(--soft);text-decoration:underline;text-underline-offset:3px}.font-credit a:hover{color:var(--accent)}.footer-right{text-align:right}.footer-right a{color:var(--accent);text-decoration:underline;text-underline-offset:4px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible,input:focus-visible,.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.input-row input:focus-visible,.direct-link-field input:focus-visible{outline:0}
 .loading[hidden]{display:none}.loading{max-width:100%;margin-top:32px;animation:rise-in .35s ease both}.loading-inner{display:flex;align-items:center;gap:16px}.loading-orbit{position:relative;display:grid;place-items:center;flex:none;width:46px;height:46px;border:1px solid var(--field-border);border-radius:50%;color:var(--accent)}.loading-orbit-dot{position:absolute;inset:-1px;animation:orbit 2.8s linear infinite}.loading-orbit-dot::before{content:'';position:absolute;top:-3px;left:50%;width:6px;height:6px;border-radius:50%;background:var(--accent)}.loading-orbit-core{font-size:19px}.loading-copy{display:grid;gap:5px;min-width:0}.loading-copy strong{font-size:13px;font-weight:700}.loading-copy>span{font-size:12px;color:var(--muted)}.loading-dots{display:inline-flex;gap:3px;margin-left:5px;vertical-align:middle}.loading-dots i{width:3px;height:3px;background:var(--accent);border-radius:50%;animation:dot-pulse 1.2s ease-in-out infinite}.loading-dots i:nth-child(2){animation-delay:.2s}.loading-dots i:nth-child(3){animation-delay:.4s}.loading-track{display:block;height:2px;background:var(--field-border);margin-top:19px;overflow:hidden}.loading-track span{display:block;width:35%;height:100%;background:var(--accent);animation:indeterminate 2s ease-in-out infinite}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@keyframes orbit{to{transform:rotate(360deg)}}@keyframes dot-pulse{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}@keyframes indeterminate{0%{transform:translateX(-120%)}100%{transform:translateX(340%)}}
@@ -705,7 +713,37 @@ const directInput = document.querySelector('#direct-url');
 const urlInput = document.querySelector('#url');
 const mediaList = document.querySelector('#media-list');
 const mediaCount = document.querySelector('#media-count');
+const imageWrap = document.querySelector('#image-wrap');
+const image = document.querySelector('#thumbnail');
+const previewEmpty = document.querySelector('#preview-empty');
+const previousMedia = document.querySelector('#preview-prev');
+const nextMedia = document.querySelector('#preview-next');
+const previewCounter = document.querySelector('#preview-counter');
 let directUrl = '';
+let moveMedia = () => {};
+let touchStart = null;
+
+previousMedia.addEventListener('click', () => moveMedia(-1));
+nextMedia.addEventListener('click', () => moveMedia(1));
+imageWrap.addEventListener('keydown', event => {
+  if (event.target !== imageWrap || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  moveMedia(event.key === 'ArrowLeft' ? -1 : 1);
+});
+// Preserve vertical page scrolling; only a clear horizontal swipe changes media.
+imageWrap.addEventListener('touchstart', event => {
+  const touch = event.touches.length === 1 ? event.touches[0] : null;
+  touchStart = touch ? {x:touch.clientX, y:touch.clientY} : null;
+}, {passive:true});
+imageWrap.addEventListener('touchend', event => {
+  const touch = event.changedTouches[0];
+  if (touchStart && touch) {
+    const dx = touch.clientX - touchStart.x, dy = touch.clientY - touchStart.y;
+    if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.2) moveMedia(dx < 0 ? 1 : -1);
+  }
+  touchStart = null;
+}, {passive:true});
+imageWrap.addEventListener('touchcancel', () => { touchStart = null; }, {passive:true});
 
 function updateSubmitLabel() {
   if (submit.disabled) return;
@@ -734,6 +772,8 @@ function isAllowedCdnUrl(value) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   result.hidden = true;
+  moveMedia = () => {};
+  touchStart = null;
   directUrl = '';
   directInput.value = '';
   message.textContent = '';
@@ -786,19 +826,38 @@ form.addEventListener('submit', async (event) => {
     const available = items.filter(item => item.available).length;
     mediaCount.textContent = data.partial ? `${available} items available; some could not be retrieved.` : `${items.length} items · Select one to open or copy`;
     const buttons = [];
-    function selectItem(item, selectedIndex) {
+    let selectedIndex = -1;
+    const total = Math.max(items.length, Number(data.totalItems) || 0);
+    const neighbor = (index, direction) => {
+      for (let i = index + direction; i >= 0 && i < items.length; i += direction) if (items[i].available) return i;
+      return -1;
+    };
+    function selectItem(item, index) {
       if (!item.available) return;
+      selectedIndex = index;
       directUrl = item.mediaUrl;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
       download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
       directInput.value = directUrl;
-      const imageWrap = document.querySelector('#image-wrap');
-      const image = document.querySelector('#thumbnail');
-      imageWrap.hidden = !isAllowedCdnUrl(item.thumbnailUrl);
-      if (!imageWrap.hidden) image.src = item.thumbnailUrl;
-      buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selectedIndex)));
+      const hasPreview = isAllowedCdnUrl(item.thumbnailUrl);
+      image.hidden = !hasPreview;
+      previewEmpty.hidden = hasPreview;
+      imageWrap.hidden = !hasPreview && items.length <= 1;
+      if (hasPreview) image.src = item.thumbnailUrl;
+      else image.removeAttribute('src');
+      const multiple = items.length > 1;
+      imageWrap.setAttribute('tabindex', multiple ? '0' : '-1');
+      previousMedia.hidden = nextMedia.hidden = previewCounter.hidden = !multiple;
+      previousMedia.disabled = neighbor(index, -1) < 0;
+      nextMedia.disabled = neighbor(index, 1) < 0;
+      previewCounter.textContent = `${item.position} / ${total}`;
+      buttons.forEach((button, buttonIndex) => button.setAttribute('aria-pressed', String(buttonIndex === index)));
     }
+    moveMedia = direction => {
+      const index = neighbor(selectedIndex, direction);
+      if (index >= 0) selectItem(items[index], index);
+    };
     if (items.length > 1) items.forEach((item, index) => {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'media-choice'; button.disabled = !item.available;
@@ -940,7 +999,7 @@ ALLOWED_ORIGINS = "*"
     "name": "Md. Mazidul Islam Mahim",
     "url": "https://github.com/mahimmazidul"
   },
-  "homepage": "https://github.com/mahimmazidul/dlsta#readme",
+  "homepage": "https://d.byaislop.cv/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mahimmazidul/dlsta.git"
@@ -952,7 +1011,12 @@ ALLOWED_ORIGINS = "*"
     "instagram",
     "instagram-downloader",
     "instagram-reels",
+    "instagram-reels-downloader",
     "instagram-photos",
+    "instagram-photo-downloader",
+    "instagram-video-downloader",
+    "instagram-carousel",
+    "media-downloader",
     "video-downloader",
     "cloudflare-workers",
     "javascript"
@@ -1066,9 +1130,11 @@ jobs:
 
 A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public embed/page HTML (including matching structured embed or public JSON media when available), then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
+**Live site:** [d.byaislop.cv](https://d.byaislop.cv/)
+
 ## What it does
 
-- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, available photos and videos are shown individually; unavailable items are indicated. Each item opens directly from Instagram’s CDN.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN.
 - Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
 - Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
 - After a successful lookup, the Instagram input clears and the paste button is ready for another link; the result stays visible. Invalid post URLs are cleared with an error before contacting the API. A valid link is retained after other lookup failures for retry, and a new link entered during an in-flight request is not overwritten. The selected media preview is centered.
