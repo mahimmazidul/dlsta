@@ -10,6 +10,8 @@ import android.graphics.Rect;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.view.View;
+import android.view.WindowInsetsController;
+import android.os.Build;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ScrollView;
@@ -36,6 +38,13 @@ public class ResponsiveLayoutTest {
         assertNotNull(v);Rect rect=new Rect();assertTrue("View should be visible",v.getGlobalVisibleRect(rect));
         assertEquals("Control must not be clipped horizontally",v.getWidth(),rect.width());
     }
+    private void assertSystemBarContrast(MainActivity activity, boolean light) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller=activity.getWindow().getInsetsController();assertNotNull(controller);
+            int mask=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            assertEquals("System bar icons should contrast with the theme",light?mask:0,controller.getSystemBarsAppearance()&mask);
+        }
+    }
     private void injectResult(MainActivity activity) {
         try {
             InstagramLookup.Result result=new InstagramLookup.Result(Arrays.asList(new InstagramLookup.Item("video","https://video.cdninstagram.com/1.mp4","",1),new InstagramLookup.Item("photo","https://media.fbcdn.net/2.jpg","",2)),"A caption for the selected post.","device",2,false);
@@ -55,13 +64,14 @@ public class ResponsiveLayoutTest {
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync();
                 scenario.onActivity(a->{
                     View root=a.findViewById(R.id.main_content);assertTrue("Compact content fits width",root.getWidth()<=a.getResources().getDisplayMetrics().widthPixels);
+                    assertSystemBarContrast(a, a.getPreferences(Context.MODE_PRIVATE).getBoolean("light",false));
                     fullyVisible(a.findViewById(R.id.theme_button));fullyVisible(a.findViewById(R.id.url_input));fullyVisible(a.findViewById(R.id.paste_button));fullyVisible(a.findViewById(R.id.lookup_button));
                     assertTrue("Primary touch target at least 48dp",a.findViewById(R.id.lookup_button).getHeight()>=Math.round(48*a.getResources().getDisplayMetrics().density));
                     ((EditText)a.findViewById(R.id.url_input)).setText("https://instagram.com/reels/De3hNM7x4jE/");
                 });
                 snapshot("dlsta-small-dark");
                 scenario.onActivity(a->a.findViewById(R.id.theme_button).performClick());InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-                scenario.onActivity(a->{assertTrue("Theme toggle preserves typed link",((EditText)a.findViewById(R.id.url_input)).getText().toString().contains("De3hNM7x4jE"));fullyVisible(a.findViewById(R.id.lookup_button));});
+                scenario.onActivity(a->{assertSystemBarContrast(a, a.getPreferences(Context.MODE_PRIVATE).getBoolean("light",false));assertTrue("Theme toggle preserves typed link",((EditText)a.findViewById(R.id.url_input)).getText().toString().contains("De3hNM7x4jE"));fullyVisible(a.findViewById(R.id.lookup_button));});
                 snapshot("dlsta-small-light");
                 scenario.onActivity(this::injectResult);InstrumentationRegistry.getInstrumentation().waitForIdleSync();
                 scenario.onActivity(a->{((ScrollView)a.findViewById(R.id.main_scroll)).scrollTo(0,a.findViewById(R.id.results).getTop());});InstrumentationRegistry.getInstrumentation().waitForIdleSync();
@@ -72,7 +82,7 @@ public class ResponsiveLayoutTest {
             shell("wm size 1280x800");shell("wm density 160");shell("settings put system font_scale 1.0");SystemClock.sleep(1000);
             try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-                scenario.onActivity(a->{View root=a.findViewById(R.id.main_content);assertTrue("Wide layouts cap content width",root.getWidth()<=Math.round(600*a.getResources().getDisplayMetrics().density)+1);fullyVisible(a.findViewById(R.id.url_input));fullyVisible(a.findViewById(R.id.lookup_button));});
+                scenario.onActivity(a->{assertSystemBarContrast(a, a.getPreferences(Context.MODE_PRIVATE).getBoolean("light",false));View root=a.findViewById(R.id.main_content);assertTrue("Wide layouts cap content width",root.getWidth()<=Math.round(600*a.getResources().getDisplayMetrics().density)+1);fullyVisible(a.findViewById(R.id.url_input));fullyVisible(a.findViewById(R.id.lookup_button));});
                 snapshot("dlsta-wide");
             }
         } finally {
