@@ -280,9 +280,9 @@ export function normalizeInstagramUrl(raw) {
   try { u = new URL(raw.trim()); } catch { throw new Error('INVALID_URL'); }
   if (u.protocol !== 'https:' || u.username || u.password || u.port ||
       !['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(u.hostname.toLowerCase())) throw new Error('INVALID_URL');
-  const match = u.pathname.match(/^\/(p|reel|tv)\/([A-Za-z0-9_-]{1,32})\/?$/);
+  const match = u.pathname.match(/^\/(p|reel|reels|tv)\/([A-Za-z0-9_-]{1,32})\/?$/);
   if (!match) throw new Error('INVALID_URL');
-  return `https://www.instagram.com/${match[1]}/${match[2]}/`;
+  return `https://www.instagram.com/${match[1] === 'reels' ? 'reel' : match[1]}/${match[2]}/`;
 }
 
 function decode(value) {
@@ -822,7 +822,7 @@ function isInstagramPostUrl(value) {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
       ['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(url.hostname.toLowerCase()) &&
-      /^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname);
+      /^\/(p|reel|reels|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname);
   } catch { return false; }
 }
 
@@ -1342,7 +1342,7 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 
 ## What it does
 
-- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN. For carousels, **Download all** requests the available files in order, one at a time, without a ZIP; requests are spaced by 250 ms to reduce browser throttling, and unavailable items are reported.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. Both `/reel/` and `/reels/` share links are accepted. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN. For carousels, **Download all** requests the available files in order, one at a time, without a ZIP; requests are spaced by 250 ms to reduce browser throttling, and unavailable items are reported.
 - Shows the caption and thumbnail when available, plus a single-line, horizontally scrollable direct media URL and a copy button. Drag the link to scroll, or focus it and use the arrow keys; copying always copies the complete URL. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
 - Downloads the selected original photo or video from Instagram's CDN directly in the browser, with a filename based on the shortcode and carousel position. The extension follows the actual response MIME type (for example, JPG, WebP or MP4); bytes are not converted. Cloudflare does **not** stream or proxy the media file. The browser loads each file into memory for a named download; if CORS, an unsupported format or the browser prevents it, use **Open direct media** and the browser’s save option instead. Multiple downloads may require browser permission or may be blocked. The app can report that downloads were requested, but cannot confirm that the browser saved every file. CDN transfers are requested sequentially; browser disk writes may overlap. Starting a new lookup cancels the remaining carousel requests. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
 - After a successful lookup, the Instagram input clears and the paste button is ready for another link; the result stays visible. Invalid post URLs are cleared with an error before contacting the API. A valid link is retained after other lookup failures for retry, and a new link entered during an in-flight request is not overwritten. The selected media preview is centered.
