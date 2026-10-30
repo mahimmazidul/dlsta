@@ -1358,15 +1358,15 @@ For structured public responses, the resolver compares available image and video
 
 A live check on 2026-10-30 returned all 10 items of a sample photo carousel as 1440 × 1921 WebP images. Three sample reels were 720 × 1280 H.264 video; those figures describe the returned files only, not Instagram’s source uploads or all reels. Offline tests also check selection by dimensions and bitrate and reject unsafe URLs. Availability and quality can change.
 
-## Android app (beta)
+## Android app
 
-The Android app uses native Android screens and controls, with the dlsta mark and light/dark themes. It requires Android 10 or newer and an internet connection; it does not require WebView. The phone performs its own anonymous public Instagram lookups using embed, page and unauthenticated GraphQL responses; it does not call the Cloudflare backend or any fallback service. This is experimental: Instagram may block a device or network, require a login, or change its public responses, and some media may not be available. Requests use only temporary anonymous CSRF values, not a private account session. Public embed requests use a fetcher user agent because Instagram can return an empty page to a mobile-browser user agent. An Android 15 emulator test on 2026-10-31 resolved three public reels and saved one, and separately saved a three-item carousel; repeat saves skipped existing files. These are time-sensitive checks, not a guarantee for every device or post. Android fetches media directly from Instagram’s CDN and saves it to **Downloads/dlsta**, without a ZIP or format conversion.
+The Android app uses responsive native Android screens and controls, with the dlsta mark, light/dark themes and swipeable carousel previews. The layout adapts to compact screens, larger text and wide windows. It requires Android 10 or newer and an internet connection; it does not require WebView. The phone performs its own anonymous public Instagram lookups using embed, page and unauthenticated GraphQL responses; it does not call the Cloudflare backend or any fallback service. Instagram’s public endpoints are unofficial: Instagram may block a device or network, require a login, or change its responses, and some media may not be available. Requests use only temporary anonymous CSRF values, not a private account session. Public embed requests use a fetcher user agent because Instagram can return an empty page to a mobile-browser user agent. An Android 15 emulator test on 2026-10-31 resolved three public reels and saved one, and separately saved a three-item carousel; repeat saves skipped existing files. These are time-sensitive checks, not a guarantee for every device or post. Android fetches media directly from Instagram’s CDN and saves it to **Downloads/dlsta**, without a ZIP or format conversion.
 
 For Android, the app queues carousel files serially with WorkManager and checks its own Downloads entries before saving, so an already-saved item is skipped. It displays queue progress while the app is open. Android may defer background work; expired links, network failures, or removed media can still prevent a download. Clipboard access happens only after tapping Paste or Copy. No private Instagram login or broad file access permission is required: Android 10+ lets an app add its own files to shared Downloads through MediaStore without broad storage access.
 
 To build from a phone: open **Actions → Build dlsta Android APK → Run workflow**, select `main`, and wait for the APK and emulator checks. Download the `dlsta-android-apk` artifact from the run, unzip it in your phone’s Files app, then open the APK and allow installation from that source if prompted. This workflow is manual-only and does not run on pushes. GitHub requires signing in to download artifacts, which expire after 30 days.
 
-For update-compatible APKs, the workflow can use `ANDROID_DLSTA_KEYSTORE` (base64-encoded keystore) and `ANDROID_DLSTA_PASSWORD` repository Actions secrets. If these are missing it produces a temporary debug-signed APK; a future build with a different debug key may require uninstalling the older app. Do not commit signing keys or passwords. This is a sideloaded beta, not a Play Store release.
+For update-compatible APKs, the workflow can use `ANDROID_DLSTA_KEYSTORE` (base64-encoded keystore) and `ANDROID_DLSTA_PASSWORD` repository Actions secrets. If these are missing it produces a temporary debug-signed APK; a future build with a different debug key may require uninstalling the older app. Do not commit signing keys or passwords. This is a sideloaded app, not a Play Store release.
 
 ## Deploy with GitHub Actions (recommended)
 
@@ -1463,7 +1463,7 @@ Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as
 See `RESEARCH.md` for the repository audit, test results, limitations, and attribution. `test/live-results.json` contains time-sensitive raw responses from the initial comparative tests; signed URLs in those responses will expire. Run `npm test` for offline unit tests. Test results are snapshots, not guarantees of future Instagram behavior.
 ````
 
-## Android beta implementation
+## Android implementation
 
 The Android project is in `android/`, with manual-only build and emulator checks in `.github/workflows/android.yml`. It uses native Android views, looks up public Instagram media on the device without a Cloudflare fallback, validates direct CDN URLs, and serially persists media through WorkManager and MediaStore. See the README and the Android source for current behavior and limitations.
 
