@@ -595,6 +595,7 @@ export async function scrapeInstagram(raw, options = {}) {
               <p id="media-count" class="media-count" role="status" hidden></p>
               <div class="result-actions">
                 <button id="save-media" type="button" class="primary-action">Download media <span aria-hidden="true">↓</span></button>
+                <button id="save-all" type="button" class="secondary-action" hidden>Download all <span aria-hidden="true">↓</span></button>
                 <a id="download" class="secondary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
               <p id="download-status" class="download-status" role="status" aria-live="polite"></p>
@@ -654,7 +655,7 @@ export async function scrapeInstagram(raw, options = {}) {
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 80% 38% at 88% 0%,var(--glow) 0%,transparent 70%),var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}a{color:inherit}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}
 .header{height:92px;display:flex;align-items:center;gap:40px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:700;letter-spacing:-.075em;line-height:1}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--button);color:var(--button-ink);font-size:22px;font-weight:700;letter-spacing:0}.brand-dot{color:var(--accent)}.header-nav{display:flex;gap:28px;margin-left:auto;font-size:12px;color:var(--nav)}.header-nav a{text-decoration:none;transition:color .2s}.header-nav a:hover,.footer a:hover{color:var(--accent)}.theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 11px;border:0;border-radius:8px;background:transparent;color:var(--nav);font-size:11px;font-weight:600;cursor:pointer;transition:color .2s,background .2s}.theme-toggle:hover{background:var(--field);color:var(--ink)}.theme-moon{display:none}:root[data-theme="light"] .theme-sun{display:none}:root[data-theme="light"] .theme-moon{display:block}.status-dot,.note-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
 .hero{padding:105px 0 118px;max-width:790px}.hero-overline,.eyebrow{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--heading-label);margin:0}.hero-overline::before{content:'';display:inline-block;width:19px;height:1px;background:var(--accent);vertical-align:middle;margin-right:10px;opacity:.8}.hero h1{font-size:clamp(55px,8vw,86px);font-weight:600;line-height:.99;letter-spacing:-.065em;margin:26px 0 22px}.hero h1 em,.about-copy h2 em{font-family:var(--serif);font-size:1.17em;font-weight:400;color:var(--accent);letter-spacing:-.025em}.hero-copy{color:var(--muted);font-size:15px;line-height:1.7;margin:0 0 60px}.tool-card{max-width:790px}label{display:block;font-size:11px;font-weight:700;color:var(--label);margin-bottom:11px}input,button{font:inherit}.input-row{display:flex;align-items:stretch;gap:10px}.link-entry{display:flex;align-items:center;gap:13px;min-width:0;flex:1;padding:0 17px;background:var(--field);border:1px solid var(--field-border);border-radius:9px;transition:background .2s,border-color .2s,box-shadow .2s}.link-entry:focus-within{background:var(--field-hover);border-color:var(--field-focus);box-shadow:0 0 0 3px var(--field-shadow)}.link-icon{font-size:16px;color:var(--icon);line-height:1}.input-row input{flex:1;min-width:0;width:100%;height:56px;padding:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:15px}.input-row input::placeholder{color:var(--soft);opacity:1}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:25px;min-height:56px;padding:0 23px;border:0;border-radius:9px;background:var(--button);color:var(--button-ink);font-weight:700;font-size:12px;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background .2s,transform .2s}.input-row button:hover,.primary-action:hover{background:var(--button-hover);transform:translateY(-2px)}.input-row button:active,.primary-action:active{transform:translateY(0)}.input-row button:disabled{opacity:.75;cursor:wait;transform:none}.input-row button:disabled>span:last-child{font-size:0}.input-row button:disabled>span:last-child::after{content:'';display:block;width:12px;height:12px;border:1.5px solid rgba(26,33,22,.3);border-left-color:#1a2116;border-radius:50%;animation:spin .8s linear infinite}.form-note{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--soft);margin-top:17px}.note-dot{width:5px;height:5px;margin-right:6px}.message{font-size:13px;line-height:1.5;color:var(--error)}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}.message[data-kind=loading]{color:var(--muted)}
-.result{display:flex;flex-direction:column;gap:25px;margin-top:46px;animation:rise-in .4s ease both}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{position:relative;touch-action:pan-y;align-self:center;width:min(100%,260px);min-width:0;height:auto;aspect-ratio:4/5;overflow:hidden;background:var(--image-bg);border-radius:8px}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-image img[hidden],.preview-empty[hidden],.preview-nav[hidden],.preview-counter[hidden]{display:none}.preview-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px}.preview-nav{position:absolute;top:50%;z-index:1;display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(16,20,15,.76);color:#fff;font-size:27px;line-height:1;cursor:pointer;transform:translateY(-50%);transition:background .2s,opacity .2s}.preview-nav:hover:not(:disabled){background:rgba(16,20,15,.95)}.preview-nav:disabled{opacity:.4;cursor:default}.preview-prev{left:12px}.preview-next{right:12px}.preview-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:5px 10px;border-radius:99px;background:rgba(16,20,15,.78);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;white-space:nowrap}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.11em;color:var(--result-label)}.result h3{font-size:23px;letter-spacing:-.045em;line-height:1.2;margin:12px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0}.result-actions .primary-action,.result-actions .secondary-action{min-height:46px}.result-actions .primary-action:disabled{opacity:.65;cursor:wait;transform:none}.secondary-action{display:inline-flex;align-items:center;justify-content:center;gap:16px;padding:0 18px;border:1px solid var(--field-border);border-radius:9px;color:var(--ink);font-size:12px;font-weight:700;text-decoration:none;transition:background .2s,border-color .2s}.secondary-action:hover{background:var(--field-hover);border-color:var(--field-focus)}.download-status{color:var(--muted);font-size:11px;line-height:1.6;margin:-10px 0 18px}.download-status:empty{display:none}.direct-label{margin:0 0 8px;color:var(--label);font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;padding:0 5px 0 14px;background:var(--field);border:1px solid var(--field-border);border-radius:8px;transition:background .2s,border-color .2s}.direct-link-field:focus-within{background:var(--field-hover);border-color:var(--field-focus)}.direct-link-field input{display:block;box-sizing:border-box;width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--direct);font:inherit;font-size:11px;line-height:1.55;padding:14px 0;text-overflow:clip;cursor:grab;touch-action:pan-y}.direct-link-field input:active{cursor:grabbing}.copy-action{border:0;border-radius:6px;background:var(--copy-bg);color:var(--accent);font-size:11px;font-weight:700;padding:9px 12px;cursor:pointer;transition:background .2s,color .2s}.copy-action:hover{background:var(--button);color:var(--button-ink)}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.65;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:7px 0 9px}.media-choice{flex:0 0 74px;min-width:0;border:0;background:transparent;color:var(--choice);opacity:.6;padding:0 0 5px;cursor:pointer;transition:opacity .2s,transform .2s}.media-choice:hover{opacity:.9;transform:translateY(-2px)}.media-choice[aria-pressed="true"]{opacity:1;color:var(--accent)}.media-choice[aria-pressed="true"] img{outline:2px solid var(--accent);outline-offset:-2px}.media-choice img{display:block;width:74px;height:70px;object-fit:cover;border-radius:5px}.media-choice span{display:block;padding:7px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.35;transform:none}
+.result{display:flex;flex-direction:column;gap:25px;margin-top:46px;animation:rise-in .4s ease both}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{position:relative;touch-action:pan-y;align-self:center;width:min(100%,260px);min-width:0;height:auto;aspect-ratio:4/5;overflow:hidden;background:var(--image-bg);border-radius:8px}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-image img[hidden],.preview-empty[hidden],.preview-nav[hidden],.preview-counter[hidden]{display:none}.preview-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px}.preview-nav{position:absolute;top:50%;z-index:1;display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(16,20,15,.76);color:#fff;font-size:27px;line-height:1;cursor:pointer;transform:translateY(-50%);transition:background .2s,opacity .2s}.preview-nav:hover:not(:disabled){background:rgba(16,20,15,.95)}.preview-nav:disabled{opacity:.4;cursor:default}.preview-prev{left:12px}.preview-next{right:12px}.preview-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:5px 10px;border-radius:99px;background:rgba(16,20,15,.78);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;white-space:nowrap}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.11em;color:var(--result-label)}.result h3{font-size:23px;letter-spacing:-.045em;line-height:1.2;margin:12px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0}.result-actions .primary-action,.result-actions .secondary-action{min-height:46px}.result-actions [hidden]{display:none}.result-actions .primary-action:disabled{opacity:.65;cursor:wait;transform:none}.secondary-action{display:inline-flex;cursor:pointer;font-family:inherit;align-items:center;justify-content:center;gap:16px;padding:0 18px;border:1px solid var(--field-border);border-radius:9px;color:var(--ink);font-size:12px;font-weight:700;text-decoration:none;transition:background .2s,border-color .2s}.secondary-action:hover:not(:disabled){background:var(--field-hover);border-color:var(--field-focus)}.secondary-action:disabled{opacity:.65;cursor:wait}.download-status{color:var(--muted);font-size:11px;line-height:1.6;margin:-10px 0 18px}.download-status:empty{display:none}.direct-label{margin:0 0 8px;color:var(--label);font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;padding:0 5px 0 14px;background:var(--field);border:1px solid var(--field-border);border-radius:8px;transition:background .2s,border-color .2s}.direct-link-field:focus-within{background:var(--field-hover);border-color:var(--field-focus)}.direct-link-field input{display:block;box-sizing:border-box;width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--direct);font:inherit;font-size:11px;line-height:1.55;padding:14px 0;text-overflow:clip;cursor:grab;touch-action:pan-y}.direct-link-field input:active{cursor:grabbing}.copy-action{border:0;border-radius:6px;background:var(--copy-bg);color:var(--accent);font-size:11px;font-weight:700;padding:9px 12px;cursor:pointer;transition:background .2s,color .2s}.copy-action:hover{background:var(--button);color:var(--button-ink)}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.65;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:7px 0 9px}.media-choice{flex:0 0 74px;min-width:0;border:0;background:transparent;color:var(--choice);opacity:.6;padding:0 0 5px;cursor:pointer;transition:opacity .2s,transform .2s}.media-choice:hover{opacity:.9;transform:translateY(-2px)}.media-choice[aria-pressed="true"]{opacity:1;color:var(--accent)}.media-choice[aria-pressed="true"] img{outline:2px solid var(--accent);outline-offset:-2px}.media-choice img{display:block;width:74px;height:70px;object-fit:cover;border-radius:5px}.media-choice span{display:block;padding:7px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.35;transform:none}
 .how-section,.about-section{padding:85px 0 90px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2,.about-copy h2{font-size:clamp(30px,4vw,43px);letter-spacing:-.05em;line-height:1.15;font-weight:600;margin:14px 0 0}.section-heading>p{font-size:12px;color:var(--soft);margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:38px;margin-top:48px}.step-top{font-family:var(--serif);font-size:27px;font-style:italic;color:var(--result-label);line-height:1}.steps h3{font-size:15px;margin:23px 0 10px}.steps p,.about-copy p,.faq p{font-size:13px;line-height:1.8;color:var(--muted);margin:0}.steps p{max-width:270px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{margin-bottom:27px}.about-copy p{margin-bottom:14px}.faq summary{position:relative;list-style:none;cursor:pointer;padding:19px 30px 19px 0;font-size:13px;font-weight:700;line-height:1.5;transition:color .2s}.faq summary:hover{color:var(--accent)}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:15px;color:var(--accent);font-size:20px;font-weight:400}.faq details[open] summary::after{content:'−'}.faq p{padding:0 20px 20px 0}
 .footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:var(--soft);line-height:1.7;margin:9px 0 0}.footer-brand .font-credit{margin-top:12px}.font-credit a{color:var(--soft);text-decoration:underline;text-underline-offset:3px}.font-credit a:hover{color:var(--accent)}.footer-right{text-align:right}.footer-right a{color:var(--accent);text-decoration:underline;text-underline-offset:4px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.input-row input:focus-visible,.direct-link-field input:focus-visible{outline:0}
 .loading[hidden]{display:none}.loading{max-width:100%;margin-top:32px;animation:rise-in .35s ease both}.loading-inner{display:flex;align-items:center;gap:16px}.loading-orbit{position:relative;display:grid;place-items:center;flex:none;width:46px;height:46px;border:1px solid var(--field-border);border-radius:50%;color:var(--accent)}.loading-orbit-dot{position:absolute;inset:-1px;animation:orbit 2.8s linear infinite}.loading-orbit-dot::before{content:'';position:absolute;top:-3px;left:50%;width:6px;height:6px;border-radius:50%;background:var(--accent)}.loading-orbit-core{font-size:19px}.loading-copy{display:grid;gap:5px;min-width:0}.loading-copy strong{font-size:13px;font-weight:700}.loading-copy>span{font-size:12px;color:var(--muted)}.loading-dots{display:inline-flex;gap:3px;margin-left:5px;vertical-align:middle}.loading-dots i{width:3px;height:3px;background:var(--accent);border-radius:50%;animation:dot-pulse 1.2s ease-in-out infinite}.loading-dots i:nth-child(2){animation-delay:.2s}.loading-dots i:nth-child(3){animation-delay:.4s}.loading-track{display:block;height:2px;background:var(--field-border);margin-top:19px;overflow:hidden}.loading-track span{display:block;width:35%;height:100%;background:var(--accent);animation:indeterminate 2s ease-in-out infinite}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@keyframes orbit{to{transform:rotate(360deg)}}@keyframes dot-pulse{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}@keyframes indeterminate{0%{transform:translateX(-120%)}100%{transform:translateX(340%)}}
@@ -712,6 +713,7 @@ const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
 const saveMedia = document.querySelector('#save-media');
+const saveAll = document.querySelector('#save-all');
 const downloadStatus = document.querySelector('#download-status');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
@@ -727,6 +729,10 @@ const previewCounter = document.querySelector('#preview-counter');
 let directUrl = '';
 let selectedFilename = '';
 let selectedType = 'media';
+let carouselDownloads = [];
+let carouselUnavailable = 0;
+let activeBatch = null;
+let lookupGeneration = 0;
 let moveMedia = () => {};
 let touchStart = null;
 
@@ -801,6 +807,14 @@ function isAllowedCdnUrl(value) {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  lookupGeneration++;
+  if (activeBatch) activeBatch.abort();
+  activeBatch = null;
+  carouselDownloads = [];
+  carouselUnavailable = 0;
+  saveAll.hidden = true;
+  saveAll.disabled = false;
+  saveMedia.disabled = false;
   result.hidden = true;
   moveMedia = () => {};
   touchStart = null;
@@ -850,7 +864,7 @@ form.addEventListener('submit', async (event) => {
     const mediaUrl = data.mediaUrl || data.videoUrl;
     if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
     const rawItems = Array.isArray(data.items) && data.items.length ? data.items : [{position:1, mediaType:data.mediaType, mediaUrl, thumbnailUrl:data.thumbnailUrl, available:true}];
-    const items = rawItems.map((item, index) => ({...item, position:item.position || index + 1,
+    const items = rawItems.map((item, index) => ({...item, position:Number.isSafeInteger(item.position) && item.position > 0 ? item.position : index + 1,
       available:item.available !== false && isAllowedCdnUrl(item.mediaUrl),
       mediaType:item.mediaType === 'photo' ? 'photo' : item.mediaType === 'video' ? 'video' : 'unknown'}));
     mediaList.replaceChildren();
@@ -861,6 +875,10 @@ form.addEventListener('submit', async (event) => {
     const buttons = [];
     let selectedIndex = -1;
     const total = Math.max(items.length, Number(data.totalItems) || 0);
+    const shortcode = new URL(submittedUrl).pathname.split('/')[2];
+    carouselDownloads = items.filter(item => item.available).map(item => ({url:item.mediaUrl, filename:`instagram_${shortcode}_${item.position}`}));
+    carouselUnavailable = Math.max(0, total - carouselDownloads.length);
+    saveAll.hidden = total <= 1;
     const neighbor = (index, direction) => {
       for (let i = index + direction; i >= 0 && i < items.length; i += direction) if (items[i].available) return i;
       return -1;
@@ -869,10 +887,9 @@ form.addEventListener('submit', async (event) => {
       if (!item.available) return;
       selectedIndex = index;
       directUrl = item.mediaUrl;
-      const shortcode = new URL(submittedUrl).pathname.split('/')[2];
       selectedType = item.mediaType;
       selectedFilename = `instagram_${shortcode}${items.length > 1 ? `_${item.position}` : ''}`;
-      downloadStatus.textContent = '';
+      if (!activeBatch) downloadStatus.textContent = '';
       if (!saveMedia.disabled) saveMedia.firstChild.textContent = `Download ${item.mediaType} `;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
@@ -923,36 +940,72 @@ form.addEventListener('submit', async (event) => {
   finally { clearInterval(hintTimer); loading.hidden = true; submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
 });
 
-// Fetch directly from the CDN in the user's browser, never through the Worker.
-// Preserve the response bytes; use its MIME type rather than guessing from the URL.
+// Fetch directly from Instagram's CDN in the browser, preserving the original bytes.
+// Each call requests one browser download; browsers may block multiple downloads.
+async function requestMediaDownload(url, filename, signal) {
+  const response = await fetch(url, {mode:'cors', credentials:'omit', referrerPolicy:'no-referrer', signal});
+  if (!response.ok) throw new Error('Download unavailable');
+  const blob = await response.blob();
+  if (signal?.aborted) throw new Error('Cancelled');
+  const types = new Map([['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp'], ['image/avif','avif'], ['image/gif','gif'], ['video/mp4','mp4'], ['video/webm','webm'], ['video/quicktime','mov']]);
+  const extension = types.get(blob.type.toLowerCase().split(';')[0].trim());
+  if (!extension || !blob.size) throw new Error('Unsupported media type');
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `${filename}.${extension}`;
+  document.body.appendChild(link);
+  try { link.click(); }
+  finally { link.remove(); setTimeout(() => URL.revokeObjectURL(objectUrl), 60000); }
+}
+
 saveMedia.addEventListener('click', async () => {
   if (!directUrl || !selectedFilename || saveMedia.disabled) return;
-  const url = directUrl, filename = selectedFilename;
+  const url = directUrl, filename = selectedFilename, generation = lookupGeneration;
   saveMedia.disabled = true;
+  saveAll.disabled = true;
   saveMedia.firstChild.textContent = 'Preparing download ';
   downloadStatus.textContent = 'Downloading directly from Instagram’s CDN…';
   try {
-    const response = await fetch(url, {mode:'cors', credentials:'omit', referrerPolicy:'no-referrer'});
-    if (!response.ok) throw new Error('Download unavailable');
-    const blob = await response.blob();
-    const types = new Map([['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp'], ['image/avif','avif'], ['image/gif','gif'], ['video/mp4','mp4'], ['video/webm','webm'], ['video/quicktime','mov']]);
-    const extension = types.get(blob.type.toLowerCase().split(';')[0].trim());
-    if (!extension || !blob.size) throw new Error('Unsupported media type');
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = `${filename}.${extension}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-    downloadStatus.textContent = 'Download started in your browser.';
+    await requestMediaDownload(url, filename);
+    if (generation === lookupGeneration) downloadStatus.textContent = 'Download started in your browser.';
   } catch {
-    downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
+    if (generation === lookupGeneration) downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
   } finally {
+    if (generation !== lookupGeneration) return;
     saveMedia.disabled = false;
+    saveAll.disabled = false;
     // The selection may have changed while the download was in progress.
     saveMedia.firstChild.textContent = `Download ${selectedType === 'unknown' ? 'media' : selectedType} `;
+  }
+});
+
+saveAll.addEventListener('click', async () => {
+  if (saveAll.disabled || carouselDownloads.length === 0) return;
+  const batch = carouselDownloads.slice();
+  const unavailable = carouselUnavailable;
+  const controller = new AbortController();
+  activeBatch = controller;
+  saveAll.disabled = true;
+  saveMedia.disabled = true;
+  let requested = 0, failed = 0;
+  try {
+    for (const [index, item] of batch.entries()) {
+      if (controller.signal.aborted) return;
+      downloadStatus.textContent = `Preparing ${index + 1} of ${batch.length}. Allow multiple downloads if your browser asks.`;
+      try { await requestMediaDownload(item.url, item.filename, controller.signal); requested++; }
+      catch { if (controller.signal.aborted) return; failed++; }
+    }
+    if (activeBatch !== controller) return;
+    const problems = [unavailable ? `${unavailable} unavailable` : '', failed ? `${failed} could not be fetched; try them individually` : ''].filter(Boolean);
+    downloadStatus.textContent = `Requested ${requested} of ${batch.length} downloads. Allow multiple downloads if your browser asks.${problems.length ? ' ' + problems.join('; ') + '.' : ''}`;
+  } finally {
+    if (activeBatch === controller) {
+      activeBatch = null;
+      saveAll.disabled = false;
+      saveMedia.disabled = false;
+      saveMedia.firstChild.textContent = `Download ${selectedType === 'unknown' ? 'media' : selectedType} `;
+    }
   }
 });
 
@@ -1202,9 +1255,9 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 
 ## What it does
 
-- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN. For carousels, **Download all** requests the available files in order, one at a time, without a ZIP; unavailable items are reported.
 - Shows the caption and thumbnail when available, plus a single-line, horizontally scrollable direct media URL and a copy button. Drag the link to scroll, or focus it and use the arrow keys; copying always copies the complete URL. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
-- Downloads the selected original photo or video from Instagram's CDN directly in the browser, with a filename based on the shortcode and carousel position. The extension follows the actual response MIME type (for example, JPG, WebP or MP4); bytes are not converted. Cloudflare does **not** stream or proxy the media file. The browser loads the file into memory for a named download; if CORS, an unsupported format or the browser prevents it, use **Open direct media** and the browser’s save option instead. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
+- Downloads the selected original photo or video from Instagram's CDN directly in the browser, with a filename based on the shortcode and carousel position. The extension follows the actual response MIME type (for example, JPG, WebP or MP4); bytes are not converted. Cloudflare does **not** stream or proxy the media file. The browser loads each file into memory for a named download; if CORS, an unsupported format or the browser prevents it, use **Open direct media** and the browser’s save option instead. Multiple downloads may require browser permission or may be blocked. The app can report that downloads were requested, but cannot confirm that the browser saved every file. CDN transfers are requested sequentially; browser disk writes may overlap. Starting a new lookup cancels the remaining carousel requests. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
 - After a successful lookup, the Instagram input clears and the paste button is ready for another link; the result stays visible. Invalid post URLs are cleared with an error before contacting the API. A valid link is retained after other lookup failures for retry, and a new link entered during an in-flight request is not overwritten. The selected media preview is centered.
 - Uses a spacious, card-free layout with a styled link field and vertically stacked mobile result, carousel selection, keyboard focus indicators, and reduced-motion support. The indeterminate loader cycles helpful hints while the lookup runs; it does not claim a percentage or progress stage.
 - Follows your device’s light/dark preference until you choose a theme in the header. A manual choice is saved in the browser’s local storage when available. DM Sans and Instrument Serif are self-hosted and credited in the footer; there are no third-party font requests.
@@ -1246,6 +1299,71 @@ The default Worker name in `wrangler.toml` is **dlsta**, matching the app and pa
 
 ### Manual deployment (Node.js 22+)
 
+```sh
+npm ci
+npx wrangler login
+# Recent Wrangler provisions the ID-less RATE_LIMIT binding on first deploy.
+npx wrangler deploy
+```
+
+Wrangler writes the provisioned namespace ID into the local configuration; dashboard-based provisioning keeps the resource ID in Cloudflare rather than necessarily writing it to your repository. Do not copy another account’s namespace ID. Verify the `RATE_LIMIT` binding on the deployed Worker. If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
+
+### Add your subdomain
+
+1. In Cloudflare, open **Workers & Pages → dlsta → Settings → Domains & Routes → Add → Custom Domain**.
+2. Enter your subdomain in a zone managed by your Cloudflare account and complete the prompts. Cloudflare creates the required DNS record and certificate. If the hostname is attached to an old Worker, move it to `dlsta` when you are ready.
+3. Open the new HTTPS address. The frontend uses the same-origin `/api/scrape` automatically; no Worker URL is required in `public/app.js` on this combined deployment. Canonical, social image, sitemap and robots URLs are generated from whichever host receives the request.
+
+If both `workers.dev` and your custom subdomain remain public, both will describe themselves as canonical. For one preferred search URL, configure a redirect from the other hostname to your chosen domain. See Cloudflare's [custom domain instructions](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
+Optional oEmbed: `npx wrangler secret put INSTAGRAM_OEMBED_TOKEN`. Obtain an appropriate Meta app access token and permissions from Meta; do not commit it. It is sent only to the official Graph API. No token is needed for the other methods.
+
+## Separate frontend
+
+For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the contents of `public/` as the site root. This is a static frontend only: the root `wrangler.toml` configures a **Worker**, not a Pages Functions project. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages only when manually started from Actions → Deploy frontend to GitHub Pages → Run workflow. Pushes and GitHub web edits do not trigger it. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
+
+## API
+
+- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, mediaType, mediaUrl, thumbnailUrl, caption}` on success, plus `videoUrl` or `photoUrl` for the matching media type. Carousels also return `items`, `totalItems`, and `partial`; each item reports its position, type, availability, and direct URL when available. `mediaType` is `video` or `photo`; empty `thumbnailUrl` and `caption` mean unavailable.
+- The response contains a direct Instagram CDN photo or video URL. Open or copy it from the UI; media bytes are delivered by Instagram, not proxied through this Worker. Signed CDN URLs expire and may be restricted. Some browsers play the video rather than forcing a download; use the browser’s save or download option.
+- Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
+
+The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
+
+## Regional placement
+
+`wrangler.toml` requests placement near AWS `us-east-1` as a best-effort mitigation for Instagram returning empty public embed data in some Cloudflare regions. The Worker remains on Cloudflare, and media downloads still go directly to Instagram’s CDN. Placement can increase latency for visitors farther away, may change during Cloudflare maintenance, and cannot guarantee that Instagram returns media. You can remove `[placement]` to restore default edge placement or change the region and redeploy. Verify from the affected location; a `cf-placement` header alone does not guarantee the subrequest egress location. See [Cloudflare placement documentation](https://developers.cloudflare.com/workers/configuration/placement/).
+
+## Troubleshooting lookup failures
+
+Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed has null context or lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
+
+## Cloudflare Free plan usage
+
+The placement hint forwards the same incoming Worker request to the chosen region; it does not itself create a second billable Worker request or proxy the media. Longer network waiting is not billed as CPU time. Upstream responses and actual CPU time can still vary, and more traffic or retries use more quota. See [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) and [Placement](https://developers.cloudflare.com/workers/configuration/placement/).
+
+Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows, even if that lookup later fails or contains invalid input; a rate-limited attempt still performs a list. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
+
+Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static CSS, JavaScript and image assets served directly are free and unlimited, but HTML, sitemap and robots requests invoke the Worker so they count against the Worker request limit; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
+
+## Search visibility and branding
+
+On the combined Cloudflare Worker, the canonical address, social previews, structured data, sitemap and robots file automatically use the current request host. The static GitHub Pages copy defaults to `https://mahimmazidul.github.io/dlsta/`. The existing dlsta mark is provided as an SVG, PNG favicons, an Apple touch icon and web manifest icons; `public/images/social-card.png` is the 1200×630 social preview. API responses send `X-Robots-Tag: noindex, nofollow`.
+
+Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as described above; otherwise the page loads but media lookups cannot work. Search metadata cannot replace a working backend.
+
+1. Deploy the site, then add your preferred URL-prefix property to [Google Search Console](https://search.google.com/search-console/): your Worker/custom-domain URL, or `https://mahimmazidul.github.io/dlsta/` for GitHub Pages. Verify ownership using an available method, such as adding the supplied HTML verification file to `public/` and redeploying.
+2. Submit the sitemap under that address (for example, `https://your-subdomain.example/sitemap.xml`) and optionally request indexing of the homepage with URL Inspection. Crawling and indexing are not guaranteed and may take time.
+3. The GitHub Pages site is in a **subdirectory**. Search crawlers read `robots.txt` at the **hostname root**, not `dlsta/robots.txt`; submit its sitemap directly. A combined Worker generates its own root robots and sitemap files. Google generally chooses one search favicon per hostname, so it may not display this project's icon independently for a subdirectory.
+4. For a separate static deployment or fork, replace the absolute canonical, Open Graph, Twitter and JSON-LD URLs in `public/index.html`, the `<loc>` in `public/sitemap.xml`, and the sitemap URL in `public/robots.txt`. Update the SEO test’s static canonical URL to match. A combined Worker automatically generates these URLs from its own hostname.
+
+## License and credit
+
+[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. The self-hosted DM Sans and Instrument Serif font files are licensed separately under the SIL Open Font License 1.1; see `public/fonts/DM-Sans-OFL.txt` and `public/fonts/Instrument-Serif-OFL.txt`. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
+
+## Verification
+
+See `RESEARCH.md` for the repository audit, test results, limitations, and attribution. `test/live-results.json` contains time-sensitive raw responses from the initial comparative tests; signed URLs in those responses will expire. Run `npm test` for offline unit tests. Test results are snapshots, not guarantees of future Instagram behavior.
 ```sh
 npm ci
 npx wrangler login
