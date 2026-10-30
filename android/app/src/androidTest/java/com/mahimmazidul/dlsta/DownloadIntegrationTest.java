@@ -15,20 +15,12 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.atomic.AtomicReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 
 /** Real network, native screen, native queue and shared storage. May fail if upstream blocks the runner. */
 @RunWith(AndroidJUnit4.class)
 public class DownloadIntegrationTest {
-    private String diagnostic(String url, boolean post) {
-        HttpURLConnection c=null;
-        try {
-            c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(8000);c.setReadTimeout(8000);c.setInstanceFollowRedirects(false);
-            c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36");
-            if(post){c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");try(OutputStream out=c.getOutputStream()){out.write("{\"url\":\"https://www.instagram.com/p/DfGUZ1GjB-A/\"}".getBytes(StandardCharsets.UTF_8));}}
-            return "HTTP "+c.getResponseCode()+" challenge="+c.getHeaderField("cf-mitigated");
-        } catch(Exception e){return e.getClass().getSimpleName();} finally {if(c!=null)c.disconnect();}
+    private String diagnostic(String url) {
+        HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(8000);c.setReadTimeout(8000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36");return "HTTP "+c.getResponseCode();}catch(Exception e){return e.getClass().getSimpleName();}finally{if(c!=null)c.disconnect();}
     }
     private String read(ActivityScenario<MainActivity> s,int id){AtomicReference<String> result=new AtomicReference<>("");s.onActivity(a->{TextView v=a.findViewById(id);if(v!=null)result.set(v.getText().toString());});return result.get();}
     private String waitFinished(ActivityScenario<MainActivity> s) throws Exception {
@@ -41,7 +33,7 @@ public class DownloadIntegrationTest {
         try(ActivityScenario<MainActivity> s=ActivityScenario.launch(MainActivity.class)) {
             s.onActivity(a->{((EditText)a.findViewById(R.id.url_input)).setText("https://www.instagram.com/p/DfGUZ1GjB-A/");a.findViewById(R.id.lookup_button).performClick();});
             long deadline=System.currentTimeMillis()+110000;boolean found=false;
-            while(System.currentTimeMillis()<deadline){AtomicReference<Boolean> ready=new AtomicReference<>(false);s.onActivity(a->ready.set(a.findViewById(R.id.save_all_button)!=null));if(ready.get()){found=true;break;}String message=read(s,R.id.message);if(message.startsWith("Could not")||message.startsWith("Enter a"))fail("Real Android lookup failed: "+message+"; Instagram embed: "+diagnostic("https://www.instagram.com/p/DfGUZ1GjB-A/embed/captioned/",false)+"; backend: "+diagnostic(InstagramLookup.BACKEND,true)+"; Worker URL: "+diagnostic(InstagramLookup.BACKUP_BACKEND,true));Thread.sleep(750);}
+            while(System.currentTimeMillis()<deadline){AtomicReference<Boolean> ready=new AtomicReference<>(false);s.onActivity(a->ready.set(a.findViewById(R.id.save_all_button)!=null));if(ready.get()){found=true;break;}String message=read(s,R.id.message);if(message.startsWith("Could not")||message.startsWith("Enter a"))fail("Real Android lookup failed: "+message+"; Instagram embed: "+diagnostic("https://www.instagram.com/p/DfGUZ1GjB-A/embed/captioned/"));Thread.sleep(750);}
             assertTrue("Public carousel must load on Android",found);
             s.onActivity(a->a.findViewById(R.id.save_all_button).performClick());String first=waitFinished(s);assertTrue("Expected three saved files: "+first,first.contains("3 saved")&&first.contains("0 failed"));
             try(Cursor files=resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads.SIZE},MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"},null)){assertNotNull(files);assertEquals(3,files.getCount());while(files.moveToNext())assertTrue(files.getLong(0)>0);}
@@ -49,4 +41,13 @@ public class DownloadIntegrationTest {
             try(Cursor files=resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads._ID},MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"},null)){assertNotNull(files);assertEquals(3,files.getCount());}
         } finally {resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI,MediaStore.Downloads.DISPLAY_NAME+" LIKE ?",new String[]{prefix+"%"});}
     }
+    @Test public void requestedReelLoadsDirectlyOnAndroid() throws Exception {
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(a->{((EditText)a.findViewById(R.id.url_input)).setText("https://www.instagram.com/reel/DdR7YUOIJl5/?srtk=MTJzOGNpbnp0dXZocQ==");a.findViewById(R.id.lookup_button).performClick();});
+            long deadline=System.currentTimeMillis()+110000;
+            while(System.currentTimeMillis()<deadline){AtomicReference<Boolean> ready=new AtomicReference<>(false);scenario.onActivity(a->ready.set(a.findViewById(R.id.save_button)!=null));if(ready.get())return;String message=read(scenario,R.id.message);if(message.startsWith("Could not")||message.startsWith("Enter a"))fail("Requested reel direct lookup failed: "+message+"; Instagram embed: "+diagnostic("https://www.instagram.com/reel/DdR7YUOIJl5/embed/captioned/"));Thread.sleep(750);}
+            fail("Requested reel lookup timed out");
+        }
+    }
+
 }

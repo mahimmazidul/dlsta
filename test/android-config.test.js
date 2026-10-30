@@ -21,6 +21,9 @@ test('Native Android UI and queue validate media and preserve direct CDN storage
   const manifest=await read('android/app/src/main/AndroidManifest.xml');
   assert.doesNotMatch(activity,/WebView|addJavascriptInterface/);
   assert.match(activity,/InstagramLookup\.lookup/);
+  const lookup=await read('android/app/src/main/java/com/mahimmazidul/dlsta/InstagramLookup.java');
+  assert.doesNotMatch(lookup,/d\.byaislop\.cv|workers\.dev|BACKUP_BACKEND|BACKEND/);
+  assert.match(lookup,/https:\/\/www\.instagram\.com\/graphql\/query/);
   assert.match(activity,/MediaRules\.allowedUrl/);
   assert.match(activity,/APPEND_OR_REPLACE/);
   assert.match(worker,/MediaRules\.allowedUrl\(link\)/);

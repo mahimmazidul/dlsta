@@ -38,26 +38,29 @@ public class InstagramLookupTest {
     }
     @Test public void deviceSuccessNeverUsesFallback() throws Exception {
         List<String> requests=new ArrayList<>();String html=embed(photo("ABC"));
-        InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body)->{requests.add(url);return html;});
-        assertEquals("device",r.source);assertEquals(1,requests.size());assertFalse(requests.contains(InstagramLookup.BACKEND));
+        InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body,headers)->{requests.add(url);return html;});
+        assertEquals("device",r.source);assertEquals(1,requests.size());assertEquals("https://www.instagram.com/p/ABC/embed/captioned/",requests.get(0));
     }
-    @Test public void missingLocalMediaUsesOnlyOurBackendFallback() throws Exception {
-        List<String> requests=new ArrayList<>();InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/reel/ABC/",(url,method,body)->{requests.add(url);if(url.equals(InstagramLookup.BACKEND)){assertEquals("POST",method);assertEquals("https://www.instagram.com/reel/ABC/",new JSONObject(body).getString("url"));return "{\"success\":true,\"mediaType\":\"video\",\"mediaUrl\":\"https://video.cdninstagram.com/a.mp4\"}";}return "<html>no media</html>";});
-        assertEquals("fallback",r.source);assertEquals(4,requests.size());assertEquals(InstagramLookup.BACKEND,requests.get(3));
+    @Test public void localGraphqlCanResolveAReelWithoutAnyBackend() throws Exception {
+        List<String> requests=new ArrayList<>();InstagramLookup.Result result=InstagramLookup.lookup("https://instagram.com/reel/DdR7YUOIJl5/?srtk=abc",(url,method,body,headers)->{
+            requests.add(url);assertTrue("Only Instagram is contacted",url.startsWith("https://www.instagram.com/"));
+            if(url.equals(InstagramLookup.GRAPHQL)){
+                assertEquals("POST",method);assertTrue(body.contains("DdR7YUOIJl5"));assertEquals("application/x-www-form-urlencoded",headers.get("Content-Type"));
+                JSONObject root=new JSONObject().put("shortcode","DdR7YUOIJl5").put("media_type",2).put("video_versions",new JSONArray().put(new JSONObject().put("url","https://video.cdninstagram.com/clip.mp4").put("width",720).put("height",1280)));
+                return new JSONObject().put("data",new JSONObject().put("xdt_api__v1__media__shortcode__web_info",new JSONObject().put("items",new JSONArray().put(root)))).toString();
+            }
+            return "<html>no media</html>";
+        });
+        assertEquals("device",result.source);assertEquals("video",result.items.get(0).type);assertEquals(InstagramLookup.GRAPHQL,requests.get(requests.size()-1));
     }
-    @Test public void blockedCustomDomainUsesSameWorkerBackup() throws Exception {
-        List<String> requests=new ArrayList<>();InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body)->{
-            requests.add(url);if(url.equals(InstagramLookup.BACKEND))throw new InstagramLookup.HttpFailure(403);
-            if(url.equals(InstagramLookup.BACKUP_BACKEND))return "{\"success\":true,\"mediaType\":\"photo\",\"mediaUrl\":\"https://media.fbcdn.net/a.jpg\"}";
-            return "<html>no media</html>";});
-        assertEquals("fallback",r.source);assertEquals(InstagramLookup.BACKUP_BACKEND,requests.get(requests.size()-1));
+    @Test public void directFailureNeverContactsCloudflare() throws Exception {
+        List<String> requests=new ArrayList<>();try{InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body,headers)->{requests.add(url);return "no media";});fail("Should report failure");}catch(Exception expected){}
+        assertTrue(requests.size()>3);for(String url:requests)assertTrue(url.startsWith("https://www.instagram.com/"));
     }
-    @Test public void workerRateLimitIsNotBypassed() throws Exception {
-        List<String> requests=new ArrayList<>();try {InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body)->{requests.add(url);if(url.equals(InstagramLookup.BACKEND))throw new InstagramLookup.HttpFailure(429);return "no media";});fail("Lookup should fail");} catch(Exception expected){}
-        assertFalse(requests.contains(InstagramLookup.BACKUP_BACKEND));
-    }
-    @Test public void fallbackNeverAcceptsUntrustedMediaHosts() throws Exception {
-        JSONObject result=new JSONObject("{\"success\":true,\"mediaType\":\"photo\",\"mediaUrl\":\"https://fbcdn.net.evil.example/a.jpg\"}");assertNull(InstagramLookup.parseBackend(result));
+    @Test public void explicitlyTypedOpenGraphVideoIsAllowedButUntrustedHostIsNot() {
+        String video="<meta property=\"og:video\" content=\"https://video.cdninstagram.com/a.mp4?x=1&amp;y=2\">";
+        InstagramLookup.Result result=InstagramLookup.parsePublic(video,"ABC");assertNotNull(result);assertEquals("https://video.cdninstagram.com/a.mp4?x=1&y=2",result.items.get(0).url);
+        assertNull(InstagramLookup.parsePublic("<meta property=\"og:video\" content=\"https://fbcdn.net.evil.example/a.mp4\">","ABC"));
     }
     @Test public void jsonScriptMediaIsFound() throws Exception {
         String html="<script type=\"application/json\">"+new JSONObject().put("data",photo("ABC"))+"</script>";

@@ -9,22 +9,25 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.util.UUID;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Public, anonymous lookup on the device first. The existing backend is the fallback. */
+/** Public, anonymous lookup performed entirely on the device. */
 final class InstagramLookup {
-    static final String BACKEND = "https://d.byaislop.cv/api/scrape";
-    static final String BACKUP_BACKEND = "https://dlsta.byaislop.workers.dev/api/scrape";
+    static final String GRAPHQL = "https://www.instagram.com/graphql/query";
     static final class HttpFailure extends Exception { final int status; HttpFailure(int status) { this.status=status; } }
     static final int MAX_BODY = 3_000_000;
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36";
-    interface Transport { String request(String url, String method, String body) throws Exception; }
+    interface Transport { String request(String url, String method, String body, Map<String,String> headers) throws Exception; }
     static final class Item {
         final String type, url, thumbnail; final int position;
         Item(String type, String url, String thumbnail, int position) { this.type=type; this.url=url; this.thumbnail=thumbnail; this.position=position; }
@@ -50,51 +53,48 @@ final class InstagramLookup {
     static Result lookup(String raw, Transport transport) throws Exception {
         String url=normalize(raw); String shortcode=url.split("/")[4];
         String alternate=url.contains("/reel/") ? url.replace("/reel/","/p/") : url.contains("/p/") ? url.replace("/p/","/reel/") : null;
-        String[] attempts=alternate==null ? new String[]{url+"embed/captioned/",url+"embed/"} : new String[]{url+"embed/captioned/",alternate+"embed/captioned/",url+"embed/"};
+        String[] attempts=alternate==null ? new String[]{url+"embed/captioned/",url+"embed/",url} : new String[]{url+"embed/captioned/",alternate+"embed/captioned/",url+"embed/",url};
         for (String candidate: attempts) {
-            try { Result result=parsePublic(transport.request(candidate,"GET",null),shortcode); if (result!=null) return result; } catch (Exception ignored) { }
+            try { Result result=parsePublic(transport.request(candidate,"GET",null,Collections.emptyMap()),shortcode); if (result!=null) return result; } catch (Exception ignored) { }
         }
         try {
-            String body=new JSONObject().put("url",url).toString(); String response;
-            try { response=transport.request(BACKEND,"POST",body); }
-            catch(HttpFailure error) { if(error.status!=403)throw error; response=transport.request(BACKUP_BACKEND,"POST",body); }
-            catch(java.io.IOException error) { response=transport.request(BACKUP_BACKEND,"POST",body); }
-            JSONObject data=new JSONObject(response); if (!data.optBoolean("success")) throw new Exception();
-            Result result=parseBackend(data); if (result!=null) return result;
-        } catch (Exception ignored) { }
-        throw new Exception("Could not retrieve this post. It may be private, deleted, restricted or temporarily unavailable.");
+            String csrf=UUID.randomUUID().toString().replace("-","");
+            try {
+                String home=transport.request("https://www.instagram.com/","GET",null,Collections.emptyMap());
+                Matcher token=Pattern.compile("\"csrf_token\"\\s*:\\s*\"([A-Za-z0-9_-]{1,128})\"").matcher(home);
+                if(token.find())csrf=token.group(1);
+            } catch(Exception ignored) { }
+            JSONObject variables=new JSONObject().put("shortcode",shortcode).put("fetch_tagged_user_count",JSONObject.NULL).put("hoisted_comment_id",JSONObject.NULL).put("hoisted_reply_id",JSONObject.NULL).put("__relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider",false);
+            Map<String,String> fields=new LinkedHashMap<>();fields.put("variables",variables.toString());fields.put("doc_id","27128499623469141");fields.put("lsd","AVqbxe3J_YA");fields.put("fb_api_req_friendly_name","PolarisPostRootQuery");fields.put("av","0");fields.put("__d","www");fields.put("__user","0");fields.put("__a","1");fields.put("__req","3");fields.put("__hs","20000.HYP:instagram_web_pkg.2.1..0.0");fields.put("dpr","1");fields.put("__ccg","UNKNOWN");fields.put("__comet_req","7");fields.put("jazoest","2957");fields.put("__spin_r","1000000000");fields.put("__spin_b","trunk");fields.put("fb_api_caller_class","RelayModern");fields.put("server_timestamps","true");
+            StringBuilder form=new StringBuilder();for(Map.Entry<String,String> entry:fields.entrySet()){if(form.length()>0)form.append('&');form.append(URLEncoder.encode(entry.getKey(),"UTF-8")).append('=').append(URLEncoder.encode(entry.getValue(),"UTF-8"));}
+            Map<String,String> headers=new LinkedHashMap<>();headers.put("Content-Type","application/x-www-form-urlencoded");headers.put("X-IG-App-ID","936619743392459");headers.put("X-FB-LSD","AVqbxe3J_YA");headers.put("X-FB-Friendly-Name","PolarisPostRootQuery");headers.put("X-Requested-With","XMLHttpRequest");headers.put("X-ASBD-ID","129477");headers.put("X-CSRFToken",csrf);headers.put("Cookie","csrftoken="+csrf+"; ig_did="+UUID.randomUUID()+"; mid="+UUID.randomUUID().toString().replace("-",""));headers.put("Origin","https://www.instagram.com");headers.put("Referer","https://www.instagram.com/");
+            String json=transport.request(GRAPHQL,"POST",form.toString(),headers);if(json.startsWith("for (;;);"))json=json.substring(9);
+            JSONObject envelope=new JSONObject(json).optJSONObject("data");JSONObject info=envelope==null?null:envelope.optJSONObject("xdt_api__v1__media__shortcode__web_info");JSONArray items=info==null?null:info.optJSONArray("items");
+            JSONObject root=items==null?null:items.optJSONObject(0);if(root==null&&envelope!=null)root=envelope.optJSONObject("xdt_shortcode_media");
+            if(root!=null && (!root.has("shortcode")||shortcode.equals(root.optString("shortcode")))){Result result=structured(root);if(result!=null)return result;}
+        } catch(Exception ignored) { }
+        throw new Exception("Could not retrieve this post directly. Instagram may have restricted it or blocked this network.");
     }
-    private static String request(String url,String method,String body) throws Exception {
+    private static String request(String url,String method,String body,Map<String,String> headers) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
         try {
             c.setConnectTimeout(4500); c.setReadTimeout(6500); c.setInstanceFollowRedirects(false); c.setRequestMethod(method);
-            c.setRequestProperty("User-Agent",USER_AGENT); c.setRequestProperty("Accept",method.equals("POST")?"application/json":"text/html");
-            if (body!=null) { c.setDoOutput(true); c.setRequestProperty("Content-Type","application/json"); try(OutputStream out=c.getOutputStream()){ out.write(body.getBytes(StandardCharsets.UTF_8)); } }
+            c.setRequestProperty("User-Agent",USER_AGENT); c.setRequestProperty("Accept",method.equals("POST")?"*/*":"text/html");
+            for(Map.Entry<String,String> h:headers.entrySet())c.setRequestProperty(h.getKey(),h.getValue());
+            if (body!=null) { c.setDoOutput(true); try(OutputStream out=c.getOutputStream()){ out.write(body.getBytes(StandardCharsets.UTF_8)); } }
             int status=c.getResponseCode(); if(status!=200)throw new HttpFailure(status);
             if(c.getContentLengthLong()>MAX_BODY)throw new Exception("Response too large");
             try (InputStream in=c.getInputStream(); ByteArrayOutputStream out=new ByteArrayOutputStream()) {
-                byte[] bytes=new byte[8192]; int n, total=0; while((n=in.read(bytes))!=-1){total+=n;if(total>MAX_BODY)throw new Exception("Response too large");out.write(bytes,0,n);} return out.toString("UTF-8");
+                byte[] bytes=new byte[8192]; int n, total=0; while((n=in.read(bytes))!=-1){total+=n;if(total>MAX_BODY)throw new Exception("Response too large");out.write(bytes,0,n);}
+                String result=out.toString("UTF-8");
+                // Use only an anonymous CSRF value issued for this request; never load a user session.
+                if(url.equals("https://www.instagram.com/"))for(Map.Entry<String,List<String>> h:c.getHeaderFields().entrySet())if(h.getKey()!=null&&h.getKey().equalsIgnoreCase("set-cookie"))for(String value:h.getValue()){
+                    Matcher csrf=Pattern.compile("(?:^|[;,]\\s*)csrftoken=([A-Za-z0-9_-]{1,128})").matcher(value);
+                    if(csrf.find())return result+"\n{\"csrf_token\":\""+csrf.group(1)+"\"}";
+                }
+                return result;
             }
         } finally { c.disconnect(); }
-    }
-    static Result parseBackend(JSONObject data) {
-        List<Item> items=new ArrayList<>(); JSONArray array=data.optJSONArray("items"); boolean partial=data.optBoolean("partial",false);
-        if (array!=null) {
-            for(int i=0;i<Math.min(array.length(),50);i++) {
-                JSONObject item=array.optJSONObject(i); if(item==null){partial=true;continue;}
-                String url=item.optString("mediaUrl",""); String type=item.optString("mediaType","");
-                if(item.optBoolean("available",false) && MediaRules.allowedUrl(url) && (type.equals("photo")||type.equals("video"))) {
-                    String thumb=item.optString("thumbnailUrl","");items.add(new Item(type,url,MediaRules.allowedUrl(thumb)?thumb:"",Math.max(1,item.optInt("position",i+1))));
-                } else partial=true;
-            }
-        } else {
-            String type=data.optString("mediaType","");String url=data.optString("mediaUrl","");String thumb=data.optString("thumbnailUrl","");
-            if((type.equals("photo")||type.equals("video")) && MediaRules.allowedUrl(url))items.add(new Item(type,url,MediaRules.allowedUrl(thumb)?thumb:"",1));
-        }
-        if(items.isEmpty())return null;
-        String caption=data.optString("caption",""); if(caption.length()>2000)caption=caption.substring(0,2000);
-        int total=Math.max(Math.max(items.size(),array==null?0:array.length()),data.optInt("totalItems",items.size()));
-        return new Result(items,caption,"fallback",total,partial||items.size()<total);
     }
     static Result parsePublic(String html, String shortcode) {
         if(html==null || html.length()>MAX_BODY)return null;
@@ -115,7 +115,19 @@ final class InstagramLookup {
                 else if(value instanceof JSONArray){JSONArray a=(JSONArray)value;for(int i=0;i<a.length();i++){Object c=a.opt(i);if(c instanceof JSONObject||c instanceof JSONArray)queue.add(c);}}
             }
         } catch(Exception ignored) { }
+        String video=meta(html,"og:video:secure_url");if(video.isEmpty())video=meta(html,"og:video");
+        if(MediaRules.allowedUrl(video)) {
+            String image=meta(html,"og:image"), caption=meta(html,"og:description");
+            List<Item> items=new ArrayList<>();items.add(new Item("video",video,MediaRules.allowedUrl(image)?image:"",1));
+            if(caption.length()>2000)caption=caption.substring(0,2000);return new Result(items,caption,"device",1,false);
+        }
         return null;
+    }
+    private static String meta(String html,String key){
+        Matcher tags=Pattern.compile("<meta\\b[^>]*>",Pattern.CASE_INSENSITIVE).matcher(html);
+        Pattern attr=Pattern.compile("([A-Za-z_:.-]+)\\s*=\\s*([\"'])(.*?)\\2",Pattern.CASE_INSENSITIVE);
+        while(tags.find()){Matcher values=attr.matcher(tags.group());String name="",content="";while(values.find()){if(values.group(1).equalsIgnoreCase("property")||values.group(1).equalsIgnoreCase("name"))name=values.group(3);if(values.group(1).equalsIgnoreCase("content"))content=values.group(3);}if(name.equalsIgnoreCase(key))return content.replace("&amp;","&").replace("&quot;","\"").replace("&#39;","'").replace("&lt;","<").replace("&gt;",">");}
+        return "";
     }
     private static String best(JSONArray candidates) {
         if(candidates==null)return ""; String best=""; long bestArea=-1,bestRate=-1;
