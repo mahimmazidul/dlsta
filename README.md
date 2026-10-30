@@ -1,6 +1,13 @@
-# DLSTA — Insta DL: Instagram Reels & Video Downloader
+# dlsta — Instagram Reels & Video Downloader
 
 A small Cloudflare Worker + static UI for resolving **public** Instagram videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
+
+## What it does
+
+- Resolves supported **public** Instagram post and reel video links without requiring an Instagram login.
+- Shows the caption and thumbnail when available, plus a direct, selectable video URL and copy button.
+- Opens the video from Instagram's CDN; Cloudflare does **not** stream or proxy the video file.
+- Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
 **Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks video URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
 
@@ -40,6 +47,10 @@ The rate limiter targets **10 API requests per IP per fixed minute**, storing sh
 Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful video lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
+
+## License and credit
+
+[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
 
 ## Verification
 
