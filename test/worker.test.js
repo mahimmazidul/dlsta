@@ -190,3 +190,14 @@ test('post can recover from its alternate public reel embed', async () => {
     assert.equal(r.photoUrl,'https://x.fbcdn.net/photo.jpg');assert.ok(calls.some(u=>u.includes('/reel/abc/embed/')));
   } finally {globalThis.fetch=original;}
 });
+
+
+test('video rendition selection uses dimensions first and bitrate as a tie breaker', () => {
+  const root={shortcode:'abc',media_type:2,video_versions:[
+    {url:'https://x.fbcdn.net/high-resolution.mp4',width:1080,height:1920,bitrate:500000},
+    {url:'https://x.fbcdn.net/high-bitrate-small.mp4',width:720,height:1280,bitrate:5000000},
+    {url:'https://x.fbcdn.net/best.mp4',width:1080,height:1920,bitrate:1500000},
+    {url:'https://fbcdn.net.evil.test/unsafe.mp4',width:3000,height:5000,bitrate:9999999}]};
+  const html=`<script>{"contextJSON":${JSON.stringify(JSON.stringify({gql_data:{shortcode_media:root}}))}}</script>`;
+  assert.equal(parseEmbedMedia(html,'abc').videoUrl,'https://x.fbcdn.net/best.mp4');
+});
