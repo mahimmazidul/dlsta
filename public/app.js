@@ -118,7 +118,7 @@ function isInstagramPostUrl(value) {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
       ['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(url.hostname.toLowerCase()) &&
-      /^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname);
+      /^\/(p|reel|reels|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname);
   } catch { return false; }
 }
 

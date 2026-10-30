@@ -13,9 +13,9 @@ export function normalizeInstagramUrl(raw) {
   try { u = new URL(raw.trim()); } catch { throw new Error('INVALID_URL'); }
   if (u.protocol !== 'https:' || u.username || u.password || u.port ||
       !['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(u.hostname.toLowerCase())) throw new Error('INVALID_URL');
-  const match = u.pathname.match(/^\/(p|reel|tv)\/([A-Za-z0-9_-]{1,32})\/?$/);
+  const match = u.pathname.match(/^\/(p|reel|reels|tv)\/([A-Za-z0-9_-]{1,32})\/?$/);
   if (!match) throw new Error('INVALID_URL');
-  return `https://www.instagram.com/${match[1]}/${match[2]}/`;
+  return `https://www.instagram.com/${match[1] === 'reels' ? 'reel' : match[1]}/${match[2]}/`;
 }
 
 function decode(value) {

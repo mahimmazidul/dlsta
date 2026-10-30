@@ -35,6 +35,15 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, nativeMessages, saved, savedBlob: () => savedBlob, release, releaseMedia, pauses: () => pauseCount, tick: () => intervalCallback(), cleared: () => cleared};
 }
 
+test('plural reels share URLs are accepted and submitted', async () => {
+  const {elements, requests, requestBodies} = await setup();
+  elements.url.value = 'https://www.instagram.com/reels/De3hNM7x4jE/?s=1';
+  await elements.form.events.submit({preventDefault() {}});
+  assert.equal(requests.length, 1);
+  assert.equal(requestBodies[0].url, 'https://www.instagram.com/reels/De3hNM7x4jE/?s=1');
+  assert.equal(elements.result.hidden, false);
+});
+
 test('result presents and copies a direct CDN link', async () => {
   const {elements, copied} = await setup();
   await elements.form.events.submit({preventDefault() {}});

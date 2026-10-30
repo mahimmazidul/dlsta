@@ -8,6 +8,7 @@ const env = () => ({RATE_LIMIT: kv()});
 const req = (url, method='POST') => new Request('https://app.example/api/scrape', {method, headers:{'content-type':'application/json','cf-connecting-ip':'192.0.2.1'},body:JSON.stringify({url})});
 test('input validation prevents host and credential bypass', () => {
   assert.equal(normalizeInstagramUrl('https://www.instagram.com/reel/abc_123/?x=1'),'https://www.instagram.com/reel/abc_123/');
+  assert.equal(normalizeInstagramUrl('https://www.instagram.com/reels/De3hNM7x4jE/?s=1'),'https://www.instagram.com/reel/De3hNM7x4jE/');
   for (const s of ['', 'https://youtube.com/reel/abc/', 'https://instagram.com.evil.com/reel/abc/', 'https://instagram.com@evil.com/reel/abc/', 'http://instagram.com/reel/abc/', 'https://instagram.com/stories/foo/1']) assert.throws(() => normalizeInstagramUrl(s));
 });
 test('CDN validation rejects lookalikes, credentials, ports', () => {
