@@ -106,6 +106,11 @@ Carousel support now returns and displays each available item individually and m
 
 The interface now offers a user-initiated paste-and-lookup action with manual-paste fallback and a more compact mobile layout. Reel extraction also tries the alternative public /p/ embed if the /reel/ embed contains no usable media; failure diagnostics now identify broad embed parsing categories without logging the post, media, cookies or tokens. Three representative public reels returned video links with HTTP 200 CDN HEAD responses from the local test environment. The reel reported in the user log was not supplied, so its exact failure and DAC behavior remain unverified.
 
+
+The frontend was subsequently redesigned as a more spacious, flat layout without boxed tool or step cards, while retaining the original mark, direct-CDN delivery, carousel selection and user-initiated paste. Browser tests covered widths 320, 375, 768 and 1440 pixels and verified clipboard lookup, carousel selection and no horizontal overflow.
+
+A Dhaka-region failure showed HTTP 200 from the embed/page/home/GraphQL but no parseable context or post item. Additional fallbacks now check the alternate public post/reel embed, the non-captioned embed, and bounded JSON scripts with an exact matching shortcode. Null context is diagnosed separately. All five user-supplied URLs resolved in local tests; the new behavior has not yet been verified from Dhaka, and may not work if Instagram omits media across all public responses.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -328,13 +333,13 @@ function structuredMedia(root) {
 
 // Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
 export function parseEmbedMedia(html, shortcode, onInspect) {
-  let detail = 'no_context';
+  let detail = /"contextJSON"\s*:\s*null/.test(html) ? 'context_null' : 'no_context';
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
     detail = 'invalid_context';
     try {
       const data = JSON.parse(JSON.parse(match[1]));
-      const root = data?.gql_data?.shortcode_media;
+      const root = data?.gql_data?.shortcode_media || data?.graphql?.shortcode_media || data?.context?.media;
       if (!root) { detail = 'no_media_object'; continue; }
       if (root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) { detail = 'shortcode_mismatch'; continue; }
       const hasVideo = root.media_type === 2 || root.is_video === true || root.__typename === 'GraphVideo';
@@ -344,6 +349,32 @@ export function parseEmbedMedia(html, shortcode, onInspect) {
     } catch { /* malformed or unrelated embed context: try another */ }
   }
   try { onInspect?.(detail); } catch { /* diagnostics are optional */ }
+  return null;
+}
+
+// Some public pages contain structured post data in application/json scripts
+// instead of contextJSON. Search only bounded JSON objects and require the exact
+// target shortcode before accepting any media URL.
+export function parsePublicJsonMedia(html, shortcode) {
+  if (!html.includes('"shortcode"') || !/("video_url"|"video_versions"|"display_url"|"image_versions2")/.test(html)) return null;
+  const scripts = html.matchAll(/<script\b(?=[^>]*\btype\s*=\s*["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi);
+  let examined = 0, count = 0;
+  for (const script of scripts) {
+    if (++count > 40) break;
+    let data;
+    try { data = JSON.parse(script[1]); } catch { continue; }
+    const queue = [data];
+    while (queue.length && examined++ < 5000) {
+      const value = queue.pop();
+      if (!value || typeof value !== 'object') continue;
+      if (value.shortcode === shortcode) {
+        const result = structuredMedia(value);
+        if (result) return result;
+      }
+      for (const child of Object.values(value)) if (child && typeof child === 'object') queue.push(child);
+    }
+    if (examined >= 5000) break;
+  }
   return null;
 }
 
@@ -397,6 +428,8 @@ export async function scrapeInstagram(raw, options = {}) {
   // Instagram accepts both public /reel/ and /p/ embeds for many reels.
   // Try the other form only when the first representation did not provide media.
   if (url.includes('/reel/')) candidates.push(['alternateEmbed', url.replace('/reel/', '/p/') + 'embed/captioned/']);
+  else if (url.includes('/p/')) candidates.push(['alternateEmbed', url.replace('/p/', '/reel/') + 'embed/captioned/']);
+  candidates.push(['plainEmbed', url + 'embed/']);
   candidates.push(['page', url]);
   for (const [stage, candidate] of candidates) {
     try {
@@ -408,6 +441,8 @@ export async function scrapeInstagram(raw, options = {}) {
       diagnostic[`${stage}Context`] = html.includes('\"contextJSON\"') ? 'present' : 'absent';
       const embedded = parseEmbedMedia(html, url.split('/')[4], detail => { diagnostic[`${stage}Detail`] = detail; });
       if (embedded) return embedded;
+      const jsonMedia = parsePublicJsonMedia(html, url.split('/')[4]);
+      if (jsonMedia) return jsonMedia;
       const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
       const image = meta(html, 'og:image') || field(html, 'display_url');
       if (validMediaUrl(image)) thumbnailUrl = image;
@@ -507,17 +542,15 @@ export async function scrapeInstagram(raw, options = {}) {
 
     <main>
       <section class="hero wrap" aria-labelledby="hero-title">
-        <div class="eyebrow"><span class="sparkle" aria-hidden="true">✳</span> YOUR LITTLE CORNER OF THE INTERNET</div>
-        <h1 id="hero-title">Good moments<br><em>are worth keeping.</em></h1>
-        <p class="hero-copy">dlsta helps you find direct links to public Instagram photos, Reels and videos in just a few clicks.</p>
+        <p class="hero-overline">INSTAGRAM DOWNLOADER</p>
+        <h1 id="hero-title">Save photos<br><em>and reels.</em></h1>
+        <p class="hero-copy">Paste a public Instagram link to find its media.</p>
 
         <div class="tool-card">
-          <div class="tool-top"><div><span class="tool-label">THE MEDIA TOOL</span><h2>Let’s find your media.</h2></div><span class="step-indicator">01 / 01</span></div>
           <form id="form">
             <label for="url">Instagram link</label>
             <div class="input-row">
-              <span class="link-icon" aria-hidden="true">↗</span>
-              <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url">
+              <input id="url" name="url" type="url" placeholder="instagram.com/p/…" autocomplete="url">
               <button id="submit" type="submit"><span>Paste &amp; get link</span><span aria-hidden="true">↗</span></button>
             </div>
             <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
@@ -543,16 +576,15 @@ export async function scrapeInstagram(raw, options = {}) {
             </div>
           </article>
         </div>
-        <div class="hero-footnote"><span class="footnote-line"></span> A LITTLE LESS SCROLLING, A LITTLE MORE KEEPING <span class="footnote-line"></span></div>
       </section>
 
       <section id="how-it-works" class="how-section">
         <div class="wrap">
-          <div class="section-heading"><div><div class="eyebrow">THE SIMPLE STUFF</div><h2>Three steps. <em>That’s it.</em></h2></div><p>No accounts, no complicated setup.<br>Just a link and a little magic.</p></div>
+          <div class="section-heading"><div><div class="eyebrow">GET STARTED</div><h2>How it works.</h2></div><p>No Instagram login needed.</p></div>
           <div class="steps">
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel, video, or photo post and copy its link.</p></article>
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the media.</p></article>
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↓</span><span>03</span></div><h3>Save your find</h3><p>Open the direct link and save it, with the creator’s permission.</p></article>
+            <article><div class="step-top">01</div><h3>Copy the link</h3><p>Find a public Instagram reel, video, or photo post and copy its link.</p></article>
+            <article><div class="step-top">02</div><h3>Paste it here</h3><p>Paste the link above, or tap Paste &amp; get link.</p></article>
+            <article><div class="step-top">03</div><h3>Open the media</h3><p>Open the direct link and save it, with the creator’s permission.</p></article>
           </div>
         </div>
       </section>
@@ -560,7 +592,7 @@ export async function scrapeInstagram(raw, options = {}) {
         <div class="wrap about-grid">
           <div class="about-copy">
             <div class="eyebrow">GOOD TO KNOW</div>
-            <h2 id="about-title">A simpler way to save<br><em>public Instagram media.</em></h2>
+            <h2 id="about-title">A few things<br><em>to know.</em></h2>
             <p>dlsta helps you find a direct link to a public Instagram photo, Reel or video. The file comes from Instagram’s CDN—not through our server—and you don’t need to sign in to Instagram.</p>
             <p>Only save content you have permission to use. dlsta is an independent project and isn’t affiliated with Instagram or Meta.</p>
           </div>
@@ -582,21 +614,15 @@ export async function scrapeInstagram(raw, options = {}) {
 ## `public/style.css`
 
 ````css
-:root{color-scheme:dark;--bg:#10120f;--surface:#1a1d18;--line:#32372c;--muted:#9a9f93;--text:#f3f3e9;--accent:#d8efab;--accent-dark:#bcd78d;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;scroll-behavior:smooth}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit}.page-shell{overflow:hidden;background:radial-gradient(ellipse 66% 48% at 50% 4%,#252c1c 0,transparent 75%)}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}.header{height:93px;display:flex;align-items:center;gap:55px;border-bottom:1px solid #30342b}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:800;letter-spacing:-.075em;line-height:1}.brand-dot{color:var(--accent)}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#182014;font-size:22px;font-weight:800;letter-spacing:0}.header-nav{display:flex;gap:28px;color:#b3b9aa;font-size:12px;font-weight:600}.header-nav a{text-decoration:none;transition:color .2s}.header-nav a:hover,.footer a:hover{color:var(--accent)}.header-pill{margin-left:auto;font-size:9px;letter-spacing:.12em;font-weight:700;color:#c6d2b4;border:1px solid #41493b;border-radius:99px;padding:9px 13px;white-space:nowrap}.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#bee28b;box-shadow:0 0 9px #bce582;margin-right:7px;vertical-align:middle}.hero{text-align:center;padding-top:105px;padding-bottom:81px}.eyebrow{font-size:10px;letter-spacing:.17em;font-weight:750;color:#a7b995}.sparkle{font-size:15px;color:var(--accent);vertical-align:middle;margin-right:5px}.hero h1{font-size:clamp(48px,7.2vw,83px);line-height:1.03;letter-spacing:-.065em;font-weight:650;margin:25px 0}.hero h1 em,.section-heading h2 em{font-style:normal;color:var(--accent)}.hero-copy{font-size:15px;line-height:1.75;color:#a9b0a1;max-width:420px;margin:0 auto 43px}.tool-card{background:linear-gradient(150deg,#20241d,#191c17);border:1px solid #3b4235;border-radius:18px;text-align:left;box-shadow:0 22px 80px #0005;max-width:682px;margin:auto;padding:27px}.tool-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.tool-label{font-size:9px;letter-spacing:.14em;font-weight:800;color:#aabe99}.tool-top h2{font-size:19px;letter-spacing:-.03em;margin:7px 0 0;font-weight:650}.step-indicator{font-size:10px;letter-spacing:.1em;color:#747f6c}label{display:block;color:#d7dacd;font-size:11px;font-weight:700;margin-bottom:10px}.input-row{display:flex;align-items:center;gap:8px;padding:6px;background:#11140f;border:1px solid #3b4236;border-radius:11px;transition:border-color .2s}.input-row:focus-within{border-color:#b4d88a;box-shadow:0 0 0 3px #c0e49618}.link-icon{padding-left:11px;color:#9fad98;font-size:20px}input{flex:1;min-width:0;outline:none;border:0;background:transparent;color:var(--text);font:inherit;font-size:13px;padding:11px 3px}input::placeholder{color:#737a6c}button{font-family:inherit}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:20px;border:0;border-radius:8px;padding:15px 18px;background:var(--accent);color:#182014;font-size:12px;font-weight:750;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background .2s,transform .2s}.input-row button:hover,.primary-action:hover{background:#e7f8c3;transform:translateY(-1px)}button:disabled{opacity:.65;cursor:wait}.form-note{display:flex;justify-content:space-between;gap:12px;color:#838e7b;font-size:10px;margin-top:13px}.form-note span span{color:#b9d59d;margin-right:4px}.message{font-size:13px;line-height:1.5;color:#efb4a7}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}.result{display:flex;gap:21px;margin-top:23px;padding-top:22px;border-top:1px solid #3b4235}.result[hidden],.result-image[hidden]{display:none}.result-image{width:130px;min-width:130px;height:160px;border-radius:10px;overflow:hidden;background:#10120f}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0}.result-kicker{font-size:9px;letter-spacing:.12em;font-weight:800;color:#bfdb9e}.result h3{font-size:19px;letter-spacing:-.03em;margin:9px 0}.caption{color:#b9c0b1;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:85px;overflow:auto}.result-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:15px}.primary-action{padding:12px 15px;gap:25px}.copy-action{border:1px solid #59654f;border-radius:8px;background:transparent;color:#e6ecdd;font-size:12px;font-weight:700;padding:11px 14px;cursor:pointer}.copy-action:hover{border-color:var(--accent);color:var(--accent)}.download-note{color:#8e9987;font-size:10px;line-height:1.6;margin:13px 0 0}.hero-footnote{display:flex;align-items:center;justify-content:center;gap:11px;margin-top:31px;color:#7d8b72;font-weight:700;font-size:9px;letter-spacing:.13em}.footnote-line{width:25px;height:1px;background:#505b49}.how-section{border-top:1px solid #2c3228;background:#171a15;padding:78px 0 85px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2{font-size:clamp(30px,4vw,44px);letter-spacing:-.05em;font-weight:650;margin:12px 0 0}.section-heading>p{font-size:12px;line-height:1.7;color:#929b8d;margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:35px}.steps article{border:1px solid #343a2f;border-radius:12px;background:#1b1e19;padding:22px 23px 25px}.step-top{display:flex;justify-content:space-between;align-items:start;color:#7d8877;font-size:10px;letter-spacing:.1em}.step-icon{display:grid;place-items:center;width:37px;height:37px;background:#2b3425;border:1px solid #3c4b32;border-radius:10px;color:var(--accent);font-size:20px}.steps h3{font-size:14px;margin:23px 0 9px}.steps p{font-size:12px;line-height:1.7;color:#949d8e;margin:0;max-width:230px}.footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:#828b7d;margin:9px 0 0}.footer-right{text-align:right}.footer-right a{text-decoration:none;color:#ccd9bf}.footer a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:700px){.wrap{width:calc(100% - 40px)}.header{height:75px;gap:15px}.header-nav{margin-left:auto;gap:15px}.header-nav a:first-child{display:none}.header-pill{display:none}.hero{padding:78px 0 65px}.hero h1{font-size:clamp(45px,10vw,64px)}.hero-copy{font-size:14px}.tool-card{padding:20px}.input-row{flex-wrap:wrap}.input-row input{height:45px}.input-row button{width:100%;justify-content:space-between}.form-note{font-size:9px}.hero-footnote{font-size:8px;letter-spacing:.09em}.footnote-line{width:14px}.section-heading{display:block}.section-heading>p{margin-top:15px}.steps{grid-template-columns:1fr;gap:11px}.steps article{padding:19px}.steps h3{margin-top:15px}.how-section{padding:60px 0}.footer{align-items:flex-start;flex-direction:column}.footer-right{text-align:left}.result-image{width:92px;min-width:92px;height:130px}.result{gap:14px}.result-actions>*{width:100%}.copy-action{padding:12px}}@media(max-width:380px){.result{flex-direction:column}.result-image{width:100%;height:180px}.form-note span:last-child{display:none}}
-
-/* Link and direct-URL presentation */
-.header-nav a{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:8px 3px;text-underline-offset:4px}.header-nav a:hover{text-decoration:underline}.header-nav a:last-child{border:1px solid #454f3e;padding:8px 12px;background:#1b2019;color:#d9e5ce}.header-nav a:last-child:hover{border-color:#b8d797;text-decoration:none}.footer-right a{color:#d8efab;text-decoration:underline;text-decoration-color:#6c8660;text-underline-offset:4px;overflow-wrap:anywhere}.caption{overflow-wrap:anywhere;word-break:break-word}.result-body{width:100%}.result-actions{margin-bottom:16px}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:10px;letter-spacing:.02em}.direct-link-field{display:flex;align-items:center;gap:0;min-width:0;max-width:100%;border:1px solid #4b5644;border-radius:9px;background:#12160f;overflow:hidden}.direct-link-field:focus-within{border-color:#b4d88a;box-shadow:0 0 0 3px #c0e49618}.direct-link-field input{width:0;min-width:0;flex:1;font-size:11px;color:#c9d7bd;padding:12px;text-overflow:ellipsis}.direct-link-field .copy-action{flex:none;border:0;border-left:1px solid #4b5644;border-radius:0;background:#262e22;color:#e8f0df;padding:12px 14px}.direct-link-field .copy-action:hover{background:#36432c;color:#effddc}@media(max-width:700px){.result-actions .primary-action{width:100%}.direct-link-field .copy-action{width:auto}}
-
-/* Center the stacked footer on phones. */
-@media(max-width:700px){.footer{align-items:center;text-align:center}.footer-right{text-align:center}.footer-brand .brand{justify-content:center}}
-/* Useful, readable content for visitors and search engines. */
-.about-section{border-top:1px solid #2c3228;padding:82px 0 88px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{font-size:clamp(29px,3.6vw,41px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 21px}.about-copy h2 em{font-style:normal;color:var(--accent)}.about-copy p,.faq p{color:#9ba595;font-size:13px;line-height:1.75;margin:0 0 14px}.faq details{border-bottom:1px solid #343b30}.faq details:first-child{border-top:1px solid #343b30}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 28px 20px 0;font-size:13px;font-weight:650;line-height:1.5;color:#e9eee3}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px;font-weight:400}.faq details[open] summary::after{content:'−'}.faq p{padding-right:20px}.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:700px){.about-section{padding:60px 0}.about-grid{grid-template-columns:1fr;gap:25px}.about-copy h2{font-size:31px}}
-
-/* Carousel items remain individual direct-to-CDN downloads. */
-.media-list{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding:3px 0 7px}.media-list[hidden],.media-count[hidden]{display:none}.media-choice{flex:0 0 76px;min-width:0;border:1px solid #48523e;background:#171d15;border-radius:8px;color:#c3cfb9;overflow:hidden;padding:0;cursor:pointer}.media-choice[aria-pressed="true"]{border:2px solid #d8efab;color:#eafbdc}.media-choice img{display:block;width:100%;height:64px;object-fit:cover}.media-choice span{display:block;padding:6px 3px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}.media-count{font-size:10px;line-height:1.4;color:#aeb9a7;margin:5px 0 0}
-
-/* Keep the tool and one-tap paste action prominent on phones. */
-@media(max-width:700px){.hero{padding:32px 0 38px}.hero>.eyebrow,.hero-footnote{display:none}.hero h1{font-size:clamp(34px,8.5vw,49px);line-height:1.04;margin:0 0 12px}.hero-copy{font-size:12px;line-height:1.5;margin:0 auto 20px}.tool-card{padding:16px}.tool-top{margin-bottom:14px}.tool-top h2{font-size:17px}.form-note{margin-top:9px}.about-section{padding:44px 0}.how-section{padding:44px 0}}
+:root{color-scheme:dark;--bg:#111310;--ink:#f1f2e8;--muted:#a6ada0;--soft:#858e80;--line:#363c33;--accent:#d8efab;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;scroll-behavior:smooth}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}a{color:inherit}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}.header{height:92px;display:flex;align-items:center;gap:40px;border-bottom:1px solid var(--line)}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:800;letter-spacing:-.07em;line-height:1}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#182014;font-size:22px;font-weight:800;letter-spacing:0}.brand-dot{color:var(--accent)}.header-nav{display:flex;gap:28px;margin-left:auto;font-size:12px;color:#b8bfb3}.header-nav a{text-decoration:none}.header-nav a:hover,.footer a:hover{color:var(--accent)}.header-pill{font-size:10px;letter-spacing:.1em;color:#929e8a}.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
+.hero{text-align:left;padding:112px 0 120px;max-width:790px}.hero-overline,.eyebrow{font-size:10px;font-weight:750;letter-spacing:.16em;color:#a7b995;margin:0}.hero h1{font-size:clamp(55px,8vw,86px);font-weight:650;line-height:1.02;letter-spacing:-.065em;margin:24px 0 22px}.hero h1 em,.about-copy h2 em{font-style:normal;color:var(--accent)}.hero-copy{color:var(--muted);font-size:15px;line-height:1.7;margin:0 0 64px}.tool-card{max-width:790px}label{display:block;font-size:11px;font-weight:700;color:#c9d0c2;margin-bottom:10px}.input-row{display:flex;align-items:center;gap:22px;border-bottom:1px solid #687462;padding:0 0 12px}.input-row:focus-within{border-color:var(--accent)}input{font:inherit}.input-row input{flex:1;min-width:0;padding:12px 0;border:0;outline:0;background:transparent;color:var(--ink);font-size:16px}.input-row input::placeholder{color:#6d776b}button{font-family:inherit}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:20px;min-height:48px;padding:0 20px;border:0;border-radius:99px;background:var(--accent);color:#172014;font-weight:700;font-size:12px;text-decoration:none;white-space:nowrap;cursor:pointer}.input-row button:hover,.primary-action:hover{background:#e7f8c3}.input-row button:disabled{opacity:.65;cursor:wait}.form-note{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--soft);margin-top:14px}.form-note span span{color:#bddb9a}.message{font-size:13px;line-height:1.5;color:#efb4a7}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}
+.result{display:flex;gap:24px;margin-top:38px;padding-top:26px;border-top:1px solid var(--line)}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{width:132px;min-width:132px;height:165px;overflow:hidden;background:#1d221b}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.1em;color:#a8c897}.result h3{font-size:20px;letter-spacing:-.03em;margin:10px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;border-bottom:1px solid var(--line)}.direct-link-field:focus-within{border-color:var(--accent)}.direct-link-field input{width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:#c9d7bd;font-size:11px;padding:12px 0;text-overflow:ellipsis}.copy-action{border:0;background:transparent;color:var(--accent);font-size:12px;font-weight:700;padding:12px;cursor:pointer}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.6;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:5px 0 8px}.media-choice{flex:0 0 76px;min-width:0;border:0;border-bottom:2px solid transparent;background:transparent;color:#b8c1b1;padding:0 0 5px;cursor:pointer}.media-choice[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.media-choice img{display:block;width:76px;height:70px;object-fit:cover}.media-choice span{display:block;padding:6px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}
+.how-section,.about-section{border-top:1px solid var(--line);padding:85px 0 90px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2,.about-copy h2{font-size:clamp(30px,4vw,43px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 0}.section-heading>p{font-size:12px;color:var(--soft);margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:38px;margin-top:44px}.steps article{border-top:1px solid var(--line);padding-top:20px}.step-top{font-size:11px;color:#a7b995}.steps h3{font-size:15px;margin:24px 0 10px}.steps p,.about-copy p,.faq p{font-size:13px;line-height:1.75;color:var(--muted);margin:0}.steps p{max-width:260px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{margin-bottom:24px}.about-copy p{margin-bottom:14px}.faq details{border-bottom:1px solid var(--line)}.faq details:first-child{border-top:1px solid var(--line)}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 30px 20px 0;font-size:13px;font-weight:650;line-height:1.5}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px}.faq details[open] summary::after{content:'−'}.faq p{padding:0 20px 20px 0}
+.footer{display:flex;justify-content:space-between;gap:25px;align-items:center;border-top:1px solid var(--line);padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:var(--soft);line-height:1.7;margin:9px 0 0}.footer-right{text-align:right}.footer-right a{color:var(--accent);text-decoration:underline;text-underline-offset:4px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible,.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:700px){.wrap{width:calc(100% - 40px)}.header{height:76px;gap:15px}.header-nav{gap:15px}.header-nav a:first-child,.header-pill{display:none}.hero{padding:70px 0 75px}.hero h1{font-size:clamp(46px,10vw,64px);margin:20px 0}.hero-copy{font-size:14px;margin-bottom:48px}.input-row{align-items:stretch;flex-direction:column;gap:12px;border:0;padding:0}.input-row input{width:100%;border-bottom:1px solid #687462;padding:13px 0}.input-row input:focus{border-color:var(--accent)}.input-row button{width:100%;justify-content:space-between;padding:0 20px}.form-note{font-size:10px}.result{gap:16px}.result-image{width:92px;min-width:92px;height:128px}.result-actions .primary-action{width:100%}.how-section,.about-section{padding:65px 0}.section-heading{display:block}.section-heading>p{margin-top:12px}.steps{grid-template-columns:1fr;gap:28px;margin-top:32px}.steps h3{margin:14px 0 8px}.about-grid{grid-template-columns:1fr;gap:32px}.footer{flex-direction:column;align-items:center;text-align:center}.footer-right{text-align:center}}
+@media(max-width:380px){.result{flex-direction:column}.result-image{width:100%;height:190px}.form-note span:last-child{display:none}}
+@media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}}
 
 ````
 
@@ -960,7 +986,7 @@ jobs:
 ````markdown
 # dlsta — Instagram photo, reel & video downloader
 
-A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public embed/page HTML (including structured embed media when available), then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
+A small Cloudflare Worker + static UI for resolving **public** Instagram photos, reels and videos. The resolver uses official oEmbed only if an app token is configured, then public embed/page HTML (including matching structured embed or public JSON media when available), then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
 ## What it does
 
@@ -1032,7 +1058,7 @@ The rate limiter targets **10 API requests per IP per fixed minute**, storing sh
 
 ## Troubleshooting lookup failures
 
-Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
+Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed has null context or lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 
 ## Cloudflare Free plan usage
 
