@@ -23,6 +23,14 @@ let directUrl = '';
 let moveMedia = () => {};
 let touchStart = null;
 
+// Keep the complete, wrapped signed URL visible without changing its value.
+function sizeDirectLink() {
+  if (result.hidden) return;
+  directInput.style.height = '0px';
+  directInput.style.height = `${directInput.scrollHeight}px`;
+}
+window.addEventListener('resize', sizeDirectLink);
+
 previousMedia.addEventListener('click', () => moveMedia(-1));
 nextMedia.addEventListener('click', () => moveMedia(1));
 imageWrap.addEventListener('keydown', event => {
@@ -140,6 +148,7 @@ form.addEventListener('submit', async (event) => {
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
       download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
       directInput.value = directUrl;
+      sizeDirectLink();
       const hasPreview = isAllowedCdnUrl(item.thumbnailUrl);
       image.hidden = !hasPreview;
       previewEmpty.hidden = hasPreview;
@@ -176,6 +185,7 @@ form.addEventListener('submit', async (event) => {
     selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
+    sizeDirectLink();
     // Keep a new link typed while this request was in flight.
     if (urlInput.value.trim() === submittedUrl) urlInput.value = '';
     message.textContent = '';

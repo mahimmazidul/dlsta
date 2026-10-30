@@ -8,7 +8,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const elements = {};
   for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
-      attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
+      style: {}, scrollHeight: 120, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
@@ -22,7 +22,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   elements['media-list'].appendChild = function(child) { this.children.push(child); };
   const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}});
   const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
-  const context = {URL, window: {location: {hostname}}, document: doc,
+  const context = {URL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
     fetch: async (url, options) => { requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
     setTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
@@ -253,4 +253,15 @@ test('single media has no carousel navigation controls', async () => {
   const {elements} = await setup({photo:true}); await elements.form.events.submit({preventDefault(){}});
   assert.equal(elements['preview-next'].hidden,true); assert.equal(elements['preview-prev'].hidden,true);
   assert.equal(elements['preview-counter'].hidden,true); assert.equal(elements['image-wrap'].attributes.tabindex,'-1');
+});
+
+
+test('full direct link wraps in an autosized readonly textarea', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.match(html, /<textarea id="direct-url"[^>]*readonly/);
+  assert.match(css, /\.direct-link-field textarea\{[^}]*overflow-wrap:anywhere/);
+  const {elements} = await setup();
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['direct-url'].style.height, '120px');
 });
