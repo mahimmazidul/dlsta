@@ -10,3 +10,10 @@ function cors(request, env) {
   else if (origin && configured.includes(origin)) headers.set('Access-Control-Allow-Origin', origin);
   return headers;
 }
+function json(request, env, status, payload, extra = {}) {
+  const headers = cors(request, env);
+  headers.set('Content-Type', 'application/json; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  for (const [k, v] of Object.entries(extra)) headers.set(k, v);
+  return new Response(JSON.stringify(payload), { status, headers });
+}
