@@ -1,6 +1,34 @@
 // Leave empty on Cloudflare: /api/scrape automatically uses the current Worker or custom domain.
 // Only set a Worker origin here when the frontend is hosted separately (for example, GitHub Pages).
-const WORKER_URL = '';
+const IS_ANDROID_APP = window.location.hostname === 'appassets.androidplatform.net' && Boolean(window.dlstaNative);
+const WORKER_URL = IS_ANDROID_APP ? 'https://d.byaislop.cv' : '';
+const nativePending = new Map();
+let nativeSequence = 0;
+if (IS_ANDROID_APP) {
+  window.dlstaNative.onmessage = event => {
+    try {
+      const reply = JSON.parse(event.data);
+      const pending = nativePending.get(reply.id);
+      if (!pending) return;
+      nativePending.delete(reply.id);
+      clearTimeout(pending.timer);
+      if (reply.ok) pending.resolve(reply);
+      else pending.reject(new Error(reply.error || 'Android request failed.'));
+    } catch { /* Ignore malformed messages. */ }
+  };
+  // External links open in the device browser rather than a second WebView.
+  document.querySelectorAll('a[target="_blank"]').forEach(link => link.removeAttribute('target'));
+}
+function androidRequest(type, payload = {}) {
+  if (!IS_ANDROID_APP) return Promise.reject(new Error('Android app is unavailable.'));
+  const id = ++nativeSequence;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { nativePending.delete(id); reject(new Error('Android request timed out.')); }, 15000);
+    nativePending.set(id, {resolve, reject, timer});
+    try { window.dlstaNative.postMessage(JSON.stringify({id, type, ...payload})); }
+    catch { clearTimeout(timer); nativePending.delete(id); reject(new Error('Android request failed.')); }
+  });
+}
 const form = document.querySelector('#form');
 const message = document.querySelector('#message');
 const loading = document.querySelector('#loading');
@@ -29,6 +57,7 @@ let carouselDownloads = [];
 let carouselUnavailable = 0;
 let activeBatch = null;
 let lookupGeneration = 0;
+let nativeTracking = null;
 let moveMedia = () => {};
 let touchStart = null;
 
@@ -104,6 +133,7 @@ function isAllowedCdnUrl(value) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   lookupGeneration++;
+  nativeTracking = null;
   if (activeBatch) activeBatch.abort();
   activeBatch = null;
   carouselDownloads = [];
@@ -132,8 +162,11 @@ form.addEventListener('submit', async (event) => {
   try {
     if (!urlInput.value.trim()) {
       try {
-        if (!navigator.clipboard?.readText) throw new Error('unavailable');
-        urlInput.value = (await navigator.clipboard.readText()).trim();
+        if (IS_ANDROID_APP) urlInput.value = String((await androidRequest('readClipboard')).text || '').trim();
+        else {
+          if (!navigator.clipboard?.readText) throw new Error('unavailable');
+          urlInput.value = (await navigator.clipboard.readText()).trim();
+        }
       } catch {
         urlInput.focus();
         throw new Error('Clipboard access is unavailable. Paste the Instagram link into the box.');
@@ -185,7 +218,7 @@ form.addEventListener('submit', async (event) => {
       directUrl = item.mediaUrl;
       selectedType = item.mediaType;
       selectedFilename = `instagram_${shortcode}${items.length > 1 ? `_${item.position}` : ''}`;
-      if (!activeBatch) downloadStatus.textContent = '';
+      if (!activeBatch && !nativeTracking) downloadStatus.textContent = '';
       if (!saveMedia.disabled) saveMedia.firstChild.textContent = `Download ${item.mediaType} `;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
@@ -236,6 +269,25 @@ form.addEventListener('submit', async (event) => {
   finally { clearInterval(hintTimer); loading.hidden = true; submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
 });
 
+// Android can query its persistent queue; web browsers cannot confirm saved files.
+function trackAndroidBatch(batch, generation) {
+  nativeTracking = batch;
+  const poll = async () => {
+    if (generation !== lookupGeneration || nativeTracking !== batch) return;
+    try {
+      const status = await androidRequest('status', {batch});
+      if (generation !== lookupGeneration || nativeTracking !== batch) return;
+      if (!status.total) { setTimeout(poll, 1500); return; }
+      const done = status.downloaded + status.existing + status.failed;
+      const detail = [status.existing ? `${status.existing} already saved` : '', status.failed ? `${status.failed} failed` : ''].filter(Boolean);
+      downloadStatus.textContent = status.waiting ? `Processed ${done} of ${status.total} · ${status.waiting} queued${detail.length ? ' · ' + detail.join(' · ') : ''}.` :
+        `Finished: ${status.downloaded} saved${detail.length ? ' · ' + detail.join(' · ') : ''}. Find them in Downloads / dlsta.`;
+      if (status.waiting) setTimeout(poll, 1500); else nativeTracking = null;
+    } catch { if (generation === lookupGeneration && nativeTracking === batch) setTimeout(poll, 5000); }
+  };
+  setTimeout(poll, 1000);
+}
+
 // Fetch directly from Instagram's CDN in the browser, preserving the original bytes.
 // Each call requests one browser download; browsers may block multiple downloads.
 async function requestMediaDownload(url, filename, signal) {
@@ -263,8 +315,13 @@ saveMedia.addEventListener('click', async () => {
   saveMedia.firstChild.textContent = 'Preparing download ';
   downloadStatus.textContent = 'Downloading directly from Instagram’s CDN…';
   try {
-    await requestMediaDownload(url, filename);
-    if (generation === lookupGeneration) downloadStatus.textContent = 'Download started in your browser.';
+    if (IS_ANDROID_APP) {
+      const queued = await androidRequest('enqueue', {items:[{url, filename}]});
+      if (generation === lookupGeneration) { downloadStatus.textContent = 'Download queued. Find it in Downloads / dlsta.'; trackAndroidBatch(queued.batch, generation); }
+    } else {
+      await requestMediaDownload(url, filename);
+      if (generation === lookupGeneration) downloadStatus.textContent = 'Download started in your browser.';
+    }
   } catch {
     if (generation === lookupGeneration) downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
   } finally {
@@ -298,6 +355,19 @@ saveAll.addEventListener('click', async () => {
   saveMedia.disabled = true;
   let requested = 0, failed = 0;
   try {
+    if (IS_ANDROID_APP) {
+      downloadStatus.textContent = 'Adding files to the Android download queue…';
+      try {
+        const queued = await androidRequest('enqueue', {items:batch});
+        if (activeBatch === controller) {
+          downloadStatus.textContent = `Queued ${batch.length} files for download.${unavailable ? ` ${unavailable} unavailable.` : ''} Find them in Downloads / dlsta.`;
+          trackAndroidBatch(queued.batch, lookupGeneration);
+        }
+      } catch {
+        if (activeBatch === controller) downloadStatus.textContent = 'Could not queue the downloads. Please try again.';
+      }
+      return;
+    }
     for (const [index, item] of batch.entries()) {
       if (controller.signal.aborted) return;
       downloadStatus.textContent = `Preparing ${index + 1} of ${batch.length}. Allow multiple downloads if your browser asks.`;
@@ -324,7 +394,8 @@ saveAll.addEventListener('click', async () => {
 copy.addEventListener('click', async () => {
   if (!directUrl) return;
   try {
-    await navigator.clipboard.writeText(directUrl);
+    if (IS_ANDROID_APP) await androidRequest('writeClipboard', {text:directUrl});
+    else await navigator.clipboard.writeText(directUrl);
     copy.textContent = 'Copied!';
     setTimeout(() => { copy.textContent = 'Copy'; }, 2500);
   } catch {

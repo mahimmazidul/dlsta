@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200, mediaType = 'image/webp', mediaFail = false, deferredMedia = false, mediaHandler = null} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200, mediaType = 'image/webp', mediaFail = false, deferredMedia = false, mediaHandler = null, android = false} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
   for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'save-media', 'save-all', 'download-status', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
@@ -24,13 +24,15 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const saved = []; let savedBlob;
   class TestURL extends URL { static createObjectURL(blob) { savedBlob = blob; return 'blob:test'; } static revokeObjectURL() {} }
   const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}, click(){saved.push({href:this.href, name:this.download});}, remove(){}});
-  const doc = {createElement, body:{appendChild(){}}, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
-  const context = {AbortController, URL:TestURL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
+  const doc = {createElement, querySelectorAll: () => [], body:{appendChild(){}}, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
+  const nativeMessages = [];
+  const bridge = {postMessage(raw) { const message=JSON.parse(raw); nativeMessages.push(message); let reply={id:message.id,ok:true}; if(message.type==='readClipboard') reply.text=clipText; if(message.type==='writeClipboard') copied=message.text; if(message.type==='enqueue') reply.batch='dlsta-batch-123'; queueMicrotask(()=>bridge.onmessage({data:JSON.stringify(reply)})); }};
+  const context = {AbortController, URL:TestURL, window: {location: {hostname:android?'appassets.androidplatform.net':hostname}, ...(android?{dlstaNative:bridge}:{}), events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
-    fetch: async (url, options) => { if (String(url) !== '/api/scrape') { if (mediaHandler) return mediaHandler(String(url), options); if (mediaFail) throw new Error('CORS'); if (mediaGate) await mediaGate; return new Response('original bytes', {headers:{'Content-Type':mediaType}}); } requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
+    fetch: async (url, options) => { if (!String(url).endsWith('/api/scrape')) { if (mediaHandler) return mediaHandler(String(url), options); if (mediaFail) throw new Error('CORS'); if (mediaGate) await mediaGate; return new Response('original bytes', {headers:{'Content-Type':mediaType}}); } requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
     setTimeout: (callback, ms) => { if (ms === 250) { pauseCount++; queueMicrotask(callback); } return 1; }, clearTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
   vm.runInNewContext(source, context);
-  return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, saved, savedBlob: () => savedBlob, release, releaseMedia, pauses: () => pauseCount, tick: () => intervalCallback(), cleared: () => cleared};
+  return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, nativeMessages, saved, savedBlob: () => savedBlob, release, releaseMedia, pauses: () => pauseCount, tick: () => intervalCallback(), cleared: () => cleared};
 }
 
 test('result presents and copies a direct CDN link', async () => {
@@ -381,4 +383,21 @@ test('17 available items are requested once each with pacing between downloads',
   assert.equal(pauses(),16);
   assert.deepEqual(saved.map(x=>x.name),items.map(x=>`instagram_SEVENTEEN_${x.position}.jpg`));
   assert.match(elements['download-status'].textContent,/Requested 17 of 17 downloads/);
+});
+
+
+test('Android app uses native clipboard and queues a carousel without browser downloads', async () => {
+  const items=[1,2,3].map(i=>({position:i,mediaType:'photo',mediaUrl:`https://x.fbcdn.net/${i}.jpg`}));
+  const payload={success:true,mediaType:'photo',mediaUrl:items[0].mediaUrl,totalItems:3,items};
+  const {elements,requests,nativeMessages,saved,copied}=await setup({android:true,payload,clipText:'https://www.instagram.com/p/Native_123/'});
+  elements.url.value='';
+  await elements.form.events.submit({preventDefault(){}});
+  assert.deepEqual(requests,['https://d.byaislop.cv/api/scrape']);
+  assert.equal(nativeMessages[0].type,'readClipboard');
+  await elements.copy.events.click(); assert.equal(copied(),'https://x.fbcdn.net/1.jpg');
+  await elements['save-all'].events.click();
+  const batch=nativeMessages.find(x=>x.type==='enqueue');
+  assert.equal(batch.items.length,3); assert.equal(batch.items[2].filename,'instagram_Native_123_3');
+  assert.equal(saved.length,0);
+  assert.match(elements['download-status'].textContent,/Queued 3 files/);
 });
