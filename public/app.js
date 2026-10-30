@@ -16,9 +16,20 @@ const mediaCount = document.querySelector('#media-count');
 let directUrl = '';
 
 function updateSubmitLabel() {
+  if (submit.disabled) return;
   submit.firstElementChild.textContent = urlInput.value.trim() ? 'Get media link' : 'Paste & get link';
 }
 urlInput.addEventListener('input', updateSubmitLabel);
+
+function isInstagramPostUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      ['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(url.hostname.toLowerCase()) &&
+      /^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname);
+  } catch { return false; }
+}
 
 function isAllowedCdnUrl(value) {
   try {
@@ -52,21 +63,25 @@ form.addEventListener('submit', async (event) => {
         urlInput.focus();
         throw new Error('Clipboard access is unavailable. Paste the Instagram link into the box.');
       }
-      if (!urlInput.value) { urlInput.focus(); throw new Error('Your clipboard is empty. Copy an Instagram link first.'); }
-      try {
-        const parsed = new URL(urlInput.value);
-        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !['instagram.com','www.instagram.com','m.instagram.com'].includes(parsed.hostname.toLowerCase()) || !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(parsed.pathname)) throw new Error('invalid');
-      } catch { urlInput.focus(); throw new Error('Copy a valid public Instagram post or reel link first.'); }
+      if (!urlInput.value) throw new Error('Your clipboard is empty. Copy an Instagram link first.');
+    }
+    const submittedUrl = urlInput.value.trim();
+    if (!isInstagramPostUrl(submittedUrl)) {
+      urlInput.value = '';
+      throw new Error('Copy a valid public Instagram post or reel link first.');
     }
     if (!WORKER_URL && window.location.hostname.endsWith('.github.io')) {
       throw new Error('The Cloudflare Worker URL is not configured yet. Set WORKER_URL in public/app.js and redeploy.');
     }
     const response = await fetch(`${WORKER_URL}/api/scrape`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: urlInput.value.trim()})
+      body: JSON.stringify({url: submittedUrl})
     });
     const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to find media. Please try again.');
+    if (!response.ok || !data.success) {
+      if (response.status === 400 && urlInput.value.trim() === submittedUrl) urlInput.value = '';
+      throw new Error(data.error || 'Unable to find media. Please try again.');
+    }
     const mediaUrl = data.mediaUrl || data.videoUrl;
     if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
     const rawItems = Array.isArray(data.items) && data.items.length ? data.items : [{position:1, mediaType:data.mediaType, mediaUrl, thumbnailUrl:data.thumbnailUrl, available:true}];
@@ -110,6 +125,8 @@ form.addEventListener('submit', async (event) => {
     selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
+    // Keep a new link typed while this request was in flight.
+    if (urlInput.value.trim() === submittedUrl) urlInput.value = '';
     message.textContent = '';
     message.dataset.kind = '';
   } catch (error) { message.dataset.kind = ''; message.textContent = error.message || 'Something went wrong. Please try again.'; }
@@ -137,15 +154,9 @@ document.addEventListener('paste', (event) => {
   const active = document.activeElement;
   if (active && (active.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName))) return;
   const text = event.clipboardData?.getData('text/plain')?.trim();
-  if (!text || text.length > 2048) return;
-  try {
-    const url = new URL(text);
-    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
-        !['instagram.com', 'www.instagram.com', 'm.instagram.com'].includes(url.hostname.toLowerCase()) ||
-        !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname)) return;
-    event.preventDefault();
-    urlInput.value = text;
-    updateSubmitLabel();
-    urlInput.focus();
-  } catch { /* unrelated text is left alone */ }
+  if (!isInstagramPostUrl(text)) return;
+  event.preventDefault();
+  urlInput.value = text;
+  updateSubmitLabel();
+  urlInput.focus();
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
   for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
@@ -13,7 +13,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
   let copied = '';
-  const requests = [];
+  const requests = []; const requestBodies = [];
   let release;
   const gate = deferred ? new Promise(resolve => { release = resolve; }) : null;
   let intervalCallback; let cleared = false;
@@ -24,10 +24,10 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
   const context = {URL, window: {location: {hostname}}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
-    fetch: async url => { requests.push(String(url)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'}))); },
+    fetch: async (url, options) => { requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
     setTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
   vm.runInNewContext(source, context);
-  return {elements, doc, requests, copied: () => copied, release, tick: () => intervalCallback(), cleared: () => cleared};
+  return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, release, tick: () => intervalCallback(), cleared: () => cleared};
 }
 
 test('result presents and copies a direct CDN link', async () => {
@@ -120,7 +120,8 @@ test('one-tap paste reads clipboard only on submit and automatically fetches', a
   const {elements,requests} = await setup({clipText:url});
   elements.url.value='';
   await elements.form.events.submit({preventDefault(){}});
-  assert.equal(elements.url.value,url); assert.equal(requests.length,1);
+  assert.equal(elements.url.value,''); assert.equal(requests.length,1);
+  assert.equal(elements.submit.firstElementChild.textContent,'Paste & get link');
   assert.equal(elements.result.hidden,false);
 });
 
@@ -128,7 +129,10 @@ test('clipboard denial or invalid clipboard leaves input usable and does not fet
   for (const opts of [{readFails:true},{clipText:'https://evil.test/reel/example/'}]) {
     const {elements,requests} = await setup(opts); elements.url.value='';
     await elements.form.events.submit({preventDefault(){}});
-    assert.equal(requests.length,0); assert.equal(elements.url.focused,true);
+    assert.equal(requests.length,0); assert.equal(elements.url.value,'');
+    if (opts.readFails) assert.equal(elements.url.focused,true);
+    else assert.notEqual(elements.url.focused,true);
+    assert.equal(elements.submit.firstElementChild.textContent,'Paste & get link');
     assert.match(elements.message.textContent,/Clipboard access|valid public Instagram/);
     assert.equal(elements.submit.disabled,false);
   }
@@ -163,4 +167,51 @@ test('loading state rotates hints while waiting and clears its timer afterwards'
   assert.equal(elements.loading.hidden, true);
   assert.equal(elements.form.attributes['aria-busy'], 'false');
   assert.equal(cleared(), true);
+});
+
+
+test('each successful lookup clears the input and supports another one-tap paste', async () => {
+  const {elements, requests, requestBodies, setClipboard} = await setup({clipText:'https://instagram.com/p/first/'});
+  elements.url.value='';
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements.url.value, ''); assert.equal(elements.submit.firstElementChild.textContent, 'Paste & get link');
+  assert.equal(elements.result.hidden, false);
+  setClipboard('https://instagram.com/reel/second/');
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requestBodies.map(x=>x.url), ['https://instagram.com/p/first/','https://instagram.com/reel/second/']);
+  assert.equal(elements.url.value, ''); assert.equal(elements.result.hidden, false);
+});
+
+test('an invalid manually entered link is cleared without sending a request', async () => {
+  for (const text of ['not a url', 'https://example.com/p/foo/', 'https://instagram.com/stories/user/', 'http://instagram.com/p/abc/']) {
+    const {elements, requests} = await setup(); elements.url.value = text;
+    await elements.form.events.submit({preventDefault(){}});
+    assert.equal(requests.length, 0); assert.equal(elements.url.value, '');
+    assert.match(elements.message.textContent, /valid public Instagram/);
+    assert.equal(elements.submit.firstElementChild.textContent, 'Paste & get link');
+    assert.notEqual(elements.url.focused, true);
+  }
+});
+
+test('a rejected URL is cleared but an upstream failure keeps it for retry', async () => {
+  for (const status of [400, 502]) {
+    const {elements} = await setup({payload:{success:false,error:'Could not resolve link.'}, responseStatus:status});
+    const original = elements.url.value;
+    await elements.form.events.submit({preventDefault(){}});
+    assert.equal(elements.url.value, status === 400 ? '' : original);
+    assert.equal(elements.submit.firstElementChild.textContent, status === 400 ? 'Paste & get link' : 'Get media link');
+    assert.match(elements.message.textContent, /Could not resolve/);
+  }
+});
+
+test('a new link entered during a lookup is not erased by the previous result', async () => {
+  const {elements, release} = await setup({deferred:true});
+  const pending=elements.form.events.submit({preventDefault(){}});
+  elements.url.value='https://instagram.com/p/newer/';
+  elements.url.events.input();
+  assert.equal(elements.submit.firstElementChild.textContent,'Finding your media…');
+  release(); await pending;
+  assert.equal(elements.url.value,'https://instagram.com/p/newer/');
+  assert.equal(elements.submit.firstElementChild.textContent,'Get media link');
 });
