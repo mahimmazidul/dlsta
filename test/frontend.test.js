@@ -129,3 +129,10 @@ test('clipboard denial or invalid clipboard leaves input usable and does not fet
     assert.equal(elements.submit.disabled,false);
   }
 });
+
+
+test('the flat interface has no horizontal divider borders and retains keyboard focus indicators', async () => {
+  const css = await readFile(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /border-(?:top|bottom)\s*:/);
+  assert.match(css, /input:focus-visible/);
+});
