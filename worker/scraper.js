@@ -74,17 +74,23 @@ function structuredMedia(root) {
 }
 
 // Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
-export function parseEmbedMedia(html, shortcode) {
+export function parseEmbedMedia(html, shortcode, onInspect) {
+  let detail = 'no_context';
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
+    detail = 'invalid_context';
     try {
       const data = JSON.parse(JSON.parse(match[1]));
       const root = data?.gql_data?.shortcode_media;
-      if (!root || root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) continue;
+      if (!root) { detail = 'no_media_object'; continue; }
+      if (root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) { detail = 'shortcode_mismatch'; continue; }
+      const hasVideo = root.media_type === 2 || root.is_video === true || root.__typename === 'GraphVideo';
+      detail = hasVideo && !root.video_url && !root.video_versions?.length ? 'video_url_missing' : 'media_unavailable';
       const result = structuredMedia(root);
       if (result) return result;
     } catch { /* malformed or unrelated embed context: try another */ }
   }
+  try { onInspect?.(detail); } catch { /* diagnostics are optional */ }
   return null;
 }
 
@@ -134,7 +140,12 @@ export async function scrapeInstagram(raw, options = {}) {
       }
     } catch (error) { diagnostic.oembed = failureKind(error); }
   }
-  for (const [stage, candidate] of [['embed', url + 'embed/captioned/'], ['page', url]]) {
+  const candidates = [['embed', url + 'embed/captioned/']];
+  // Instagram accepts both public /reel/ and /p/ embeds for many reels.
+  // Try the other form only when the first representation did not provide media.
+  if (url.includes('/reel/')) candidates.push(['alternateEmbed', url.replace('/reel/', '/p/') + 'embed/captioned/']);
+  candidates.push(['page', url]);
+  for (const [stage, candidate] of candidates) {
     try {
       const result = await upstream(candidate);
       diagnostic[stage] = result.status;
@@ -142,7 +153,7 @@ export async function scrapeInstagram(raw, options = {}) {
       if (result.status !== 200) continue;
       const html = result.body;
       diagnostic[`${stage}Context`] = html.includes('\"contextJSON\"') ? 'present' : 'absent';
-      const embedded = parseEmbedMedia(html, url.split('/')[4]);
+      const embedded = parseEmbedMedia(html, url.split('/')[4], detail => { diagnostic[`${stage}Detail`] = detail; });
       if (embedded) return embedded;
       const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
       const image = meta(html, 'og:image') || field(html, 'display_url');
