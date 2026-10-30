@@ -8,7 +8,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const elements = {};
   for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'save-media', 'download-status', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
-      style: {}, scrollHeight: 120, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
+      style: {}, scrollHeight: 120, scrollLeft: 0, setPointerCapture(id) { this.pointerCapture = id; }, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
@@ -259,16 +259,22 @@ test('single media has no carousel navigation controls', async () => {
 });
 
 
-test('full direct link wraps in an autosized readonly textarea', async () => {
+test('direct URL is a single-line input with drag scrolling and copy', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../public/style.css', import.meta.url), 'utf8');
-  assert.match(html, /<textarea id="direct-url"[^>]*readonly/);
-  assert.match(css, /\.direct-link-field textarea\{[^}]*overflow-wrap:anywhere/);
-  const {elements} = await setup();
+  assert.match(html, /<input id="direct-url"[^>]*readonly/);
+  assert.match(html, /id="save-media"/);
+  assert.match(css, /\.direct-link-field input\{[^}]*text-overflow:clip/);
+  const {elements,copied} = await setup();
   await elements.form.events.submit({preventDefault(){}});
-  assert.equal(elements['direct-url'].style.height, '120px');
+  const field=elements['direct-url'];
+  field.events.pointerdown({isPrimary:true,pointerType:'mouse',button:0,pointerId:7,clientX:200,detail:1,preventDefault(){}});
+  field.events.pointermove({pointerId:7,clientX:80});
+  assert.equal(field.scrollLeft,120);
+  field.events.pointerup({pointerId:7});
+  await elements.copy.events.click();
+  assert.equal(copied(),elements.download.href);
 });
-
 
 test('named download preserves WebP, JPEG and MP4 bytes and uses response MIME extension', async () => {
   for (const [mime,extension] of [['image/webp','webp'],['image/jpeg','jpg'],['video/mp4','mp4']]) {

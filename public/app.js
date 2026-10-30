@@ -27,13 +27,28 @@ let selectedType = 'media';
 let moveMedia = () => {};
 let touchStart = null;
 
-// Keep the complete, wrapped signed URL visible without changing its value.
-function sizeDirectLink() {
-  if (result.hidden) return;
-  directInput.style.height = '0px';
-  directInput.style.height = `${directInput.scrollHeight}px`;
-}
-window.addEventListener('resize', sizeDirectLink);
+// Drag the single-line field to pan long URLs. Keyboard and Copy remain available.
+let linkDrag = null;
+directInput.addEventListener('pointerdown', event => {
+  if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) ||
+      event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.detail > 1) return;
+  linkDrag = {id:event.pointerId, x:event.clientX, scroll:directInput.scrollLeft, moved:false};
+  directInput.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+directInput.addEventListener('pointermove', event => {
+  if (!linkDrag || linkDrag.id !== event.pointerId) return;
+  const delta = event.clientX - linkDrag.x;
+  if (Math.abs(delta) > 3) linkDrag.moved = true;
+  if (linkDrag.moved) directInput.scrollLeft = linkDrag.scroll - delta;
+});
+directInput.addEventListener('pointerup', event => {
+  if (!linkDrag || linkDrag.id !== event.pointerId) return;
+  const moved = linkDrag.moved;
+  linkDrag = null;
+  if (!moved) directInput.focus({preventScroll:true});
+});
+directInput.addEventListener('pointercancel', () => { linkDrag = null; });
 
 previousMedia.addEventListener('click', () => moveMedia(-1));
 nextMedia.addEventListener('click', () => moveMedia(1));
@@ -160,7 +175,7 @@ form.addEventListener('submit', async (event) => {
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
       download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
       directInput.value = directUrl;
-      sizeDirectLink();
+      directInput.scrollLeft = 0;
       const hasPreview = isAllowedCdnUrl(item.thumbnailUrl);
       image.hidden = !hasPreview;
       previewEmpty.hidden = hasPreview;
@@ -197,7 +212,6 @@ form.addEventListener('submit', async (event) => {
     selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
-    sizeDirectLink();
     // Keep a new link typed while this request was in flight.
     if (urlInput.value.trim() === submittedUrl) urlInput.value = '';
     message.textContent = '';

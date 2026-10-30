@@ -96,11 +96,12 @@
                 <a id="download" class="secondary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
               <p id="download-status" class="download-status" role="status" aria-live="polite"></p>
-              <label class="direct-label" for="direct-url">Direct media link</label>
+              <label class="direct-label" for="direct-url">Direct media link · drag to scroll</label>
               <div class="direct-link-field">
-                <textarea id="direct-url" rows="1" readonly spellcheck="false" aria-label="Direct media link"></textarea>
+                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct media link" aria-describedby="direct-help">
                 <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
+              <span id="direct-help" class="sr-only">Drag left or right to scroll the link. You can also focus it and use the arrow keys.</span>
               <p class="download-note">Downloads go directly from Instagram’s CDN without conversion. Links may expire.</p>
             </div>
           </article>
