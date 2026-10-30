@@ -61,3 +61,23 @@ test('Worker SEO follows its workers.dev or custom domain in server-rendered HTM
     assert.ok((await sitemap.text()).includes(`<loc>${origin}/</loc>`));
   }
 });
+
+
+test('HEAD and conditional requests use transformed HTML headers, not the static asset validators', async () => {
+  const html = await read('index.html');
+  const env = {ASSETS: {fetch: async request => {
+    assert.equal(request.method, 'GET');
+    for (const name of ['if-none-match', 'if-modified-since', 'range', 'if-range']) assert.equal(request.headers.get(name), null);
+    return new Response(html, {headers: {'ETag': '"static"', 'Last-Modified': 'Wed, 21 Oct 2015 07:28:00 GMT'}});
+  }}};
+  for (const method of ['GET', 'HEAD']) {
+    const response = await worker.fetch(new Request('https://dlsta.example.workers.dev/', {method, headers: {'If-None-Match': '"static"', 'Range': 'bytes=0-10'}}), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('etag'), null);
+    assert.equal(response.headers.get('last-modified'), null);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.text();
+    if (method === 'HEAD') assert.equal(body, '');
+    else assert.match(body, /<link rel="canonical" href="https:\/\/dlsta\.example\.workers\.dev\/">/);
+  }
+});
