@@ -12,13 +12,14 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false}
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
   let copied = '';
+  const requests = [];
   const doc = {events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
   const context = {URL, window: {location: {hostname}}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }}} : {},
-    fetch: async () => new Response(JSON.stringify(photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})),
+    fetch: async url => { requests.push(String(url)); return new Response(JSON.stringify(photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})); },
     setTimeout: () => {}};
   vm.runInNewContext(source, context);
-  return {elements, doc, copied: () => copied};
+  return {elements, doc, requests, copied: () => copied};
 }
 
 test('result presents and copies a direct CDN link', async () => {
@@ -81,4 +82,14 @@ test('photo result displays and copies the direct photo URL', async () => {
   assert.match(elements.download.firstChild.textContent, /photo/);
   await elements.copy.events.click();
   assert.equal(copied(), 'https://media.fbcdn.net/photo.jpg');
+});
+
+
+test('Worker and custom domains call the same-origin API automatically', async () => {
+  for (const hostname of ['dlsta.example.workers.dev', 'save.example.com']) {
+    const {elements, requests} = await setup({hostname});
+    await elements.form.events.submit({preventDefault(){}});
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0], '/api/scrape');
+  }
 });
