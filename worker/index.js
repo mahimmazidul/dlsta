@@ -60,15 +60,20 @@ export function renderSeoHtml(html, requestUrl) {
 
 async function renderHome(request, env) {
   if (!env.ASSETS) return new Response('Not found', {status: 404});
-  const response = await env.ASSETS.fetch(request);
-  if (!response.ok || request.method === 'HEAD') return response;
+  // Fetch the full source asset before transforming it. Static-asset ETags and
+  // range responses describe the untransformed file, not our host-aware HTML.
+  const sourceHeaders = new Headers(request.headers);
+  for (const name of ['if-none-match', 'if-modified-since', 'range', 'if-range']) sourceHeaders.delete(name);
+  const sourceRequest = new Request(request, {method: 'GET', headers: sourceHeaders});
+  const response = await env.ASSETS.fetch(sourceRequest);
+  if (!response.ok) return response;
   const html = renderSeoHtml(await response.text(), request.url);
   const headers = new Headers(response.headers);
   // The transformed representation has a different body and depends on the host.
   for (const name of ['content-length', 'content-encoding', 'etag', 'last-modified']) headers.delete(name);
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'no-store');
-  return new Response(html, {status: response.status, headers});
+  return new Response(request.method === 'HEAD' ? null : html, {status: response.status, headers});
 }
 
 function seoFile(request, path) {
