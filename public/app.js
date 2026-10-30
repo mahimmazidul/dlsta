@@ -276,6 +276,18 @@ saveMedia.addEventListener('click', async () => {
   }
 });
 
+// Space browser download requests so a fast CDN cannot emit a burst of clicks.
+// Cancellation stops the wait promptly when a new lookup starts.
+function pauseBetweenDownloads(signal) {
+  return new Promise(resolve => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(finish, 250);
+    function finish() { signal.removeEventListener('abort', cancel); resolve(); }
+    function cancel() { clearTimeout(timer); finish(); }
+    signal.addEventListener('abort', cancel, {once:true});
+  });
+}
+
 saveAll.addEventListener('click', async () => {
   if (saveAll.disabled || carouselDownloads.length === 0) return;
   const batch = carouselDownloads.slice();
@@ -289,7 +301,11 @@ saveAll.addEventListener('click', async () => {
     for (const [index, item] of batch.entries()) {
       if (controller.signal.aborted) return;
       downloadStatus.textContent = `Preparing ${index + 1} of ${batch.length}. Allow multiple downloads if your browser asks.`;
-      try { await requestMediaDownload(item.url, item.filename, controller.signal); requested++; }
+      try {
+        await requestMediaDownload(item.url, item.filename, controller.signal);
+        requested++;
+        if (index < batch.length - 1) await pauseBetweenDownloads(controller.signal);
+      }
       catch { if (controller.signal.aborted) return; failed++; }
     }
     if (activeBatch !== controller) return;
