@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Find direct download links for public Instagram reels and videos with DLSTA.">
-  <title>DLSTA — Save the moments worth keeping</title>
+  <meta name="description" content="Find direct download links for public Instagram reels and videos with dlsta.">
+  <title>dlsta — Save the moments worth keeping</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
   <div class="page-shell">
     <header class="header wrap">
-      <a class="brand" href="./" aria-label="DLSTA home"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a>
+      <a class="brand" href="./" aria-label="dlsta home"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a>
       <nav class="header-nav" aria-label="Main navigation">
         <a href="#how-it-works">How it works</a>
         <a href="https://github.com/mahimmazidul/dlsta" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
@@ -45,8 +45,12 @@
               <h3>Your video is ready.</h3>
               <p id="caption" class="caption"></p>
               <div class="result-actions">
-                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open video <span aria-hidden="true">↗</span></a>
-                <button id="copy" type="button" class="copy-action">Copy direct link</button>
+                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct video <span aria-hidden="true">↗</span></a>
+              </div>
+              <label class="direct-label" for="direct-url">Direct video link</label>
+              <div class="direct-link-field">
+                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct video link">
+                <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
               <p class="download-note">The video opens directly from Instagram’s CDN. If it plays instead of downloading, use your browser’s save or download option. Links may expire.</p>
             </div>
@@ -66,7 +70,7 @@
         </div>
       </section>
     </main>
-    <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta.</p></div></footer>
+    <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta. · <a href="https://github.com/mahimmazidul/dlsta/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache 2.0 license ↗</a></p></div></footer>
   </div>
 </body>
 </html>
