@@ -18,3 +18,9 @@ export function normalizeInstagramUrl(raw) {
   return `https://www.instagram.com/${match[1]}/${match[2]}/`;
 }
 
+function decode(value) {
+  if (!value) return '';
+  return value.replace(/\\u0026/gi, '&').replace(/\\u003d/gi, '=').replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&').replace(/&#0*39;/g, "'").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
