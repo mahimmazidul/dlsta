@@ -1,4 +1,9 @@
 <resources>
+  <item name="main_scroll" type="id" />
+  <item name="main_content" type="id" />
+  <item name="media_preview" type="id" />
+  <item name="theme_button" type="id" />
+  <item name="input_container" type="id" />
   <item name="url_input" type="id" />
   <item name="paste_button" type="id" />
   <item name="lookup_button" type="id" />
