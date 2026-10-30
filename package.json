@@ -2,7 +2,7 @@
   "name": "dlsta",
   "version": "1.0.0",
   "private": true,
-  "description": "Insta DL: Instagram Reels and video downloader with a vanilla JavaScript frontend and Cloudflare Workers API.",
+  "description": "dlsta: Instagram Reels and video downloader with a vanilla JavaScript frontend and Cloudflare Workers API.",
   "type": "module",
   "author": {
     "name": "Md. Mazidul Islam Mahim",
@@ -34,5 +34,6 @@
   },
   "devDependencies": {
     "wrangler": "^4.156.0"
-  }
+  },
+  "license": "Apache-2.0"
 }
