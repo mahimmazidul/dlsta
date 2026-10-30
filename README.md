@@ -7,9 +7,16 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 - Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, available photos and videos are shown individually; unavailable items are indicated. Each item opens directly from Instagram’s CDN.
 - Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
 - Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
+- Uses a spacious, card-free layout with a styled link field and result state, subtle hover/loading feedback, carousel selection, keyboard focus indicators, and reduced-motion support. Fonts are self-hosted; there are no third-party font requests.
 - Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
 **Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks direct media URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
+
+## Media quality
+
+For structured public responses, the resolver compares available image and video variants by pixel dimensions; video bitrate breaks ties when provided. A URL with no dimensions cannot be objectively ranked against a fully described variant, and a single URL cannot be compared to versions Instagram does not expose. dlsta does not claim original-upload quality or access to Instagram’s best stored version. Links are served directly from Instagram’s CDN and may expire.
+
+A live check on 2026-10-30 returned all 10 items of a sample photo carousel as 1440 × 1921 WebP images. Three sample reels were 720 × 1280 H.264 video; those figures describe the returned files only, not Instagram’s source uploads or all reels. Offline tests also check selection by dimensions and bitrate and reject unsafe URLs. Availability and quality can change.
 
 ## Deploy with GitHub Actions (recommended)
 
@@ -80,7 +87,9 @@ Instagram may respond differently by Cloudflare region or over time. If a public
 
 ## Cloudflare Free plan usage
 
-Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
+The placement hint forwards the same incoming Worker request to the chosen region; it does not itself create a second billable Worker request or proxy the media. Longer network waiting is not billed as CPU time. Upstream responses and actual CPU time can still vary, and more traffic or retries use more quota. See [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) and [Placement](https://developers.cloudflare.com/workers/configuration/placement/).
+
+Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows, even if that lookup later fails or contains invalid input; a rate-limited attempt still performs a list. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static CSS, JavaScript and image assets served directly are free and unlimited, but HTML, sitemap and robots requests invoke the Worker so they count against the Worker request limit; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
 
@@ -97,7 +106,7 @@ Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as
 
 ## License and credit
 
-[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
+[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. The self-hosted DM Sans and Instrument Serif font files are licensed separately under the SIL Open Font License 1.1; see `public/fonts/DM-Sans-OFL.txt` and `public/fonts/Instrument-Serif-OFL.txt`. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
 
 ## Verification
 
