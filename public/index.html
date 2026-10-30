@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Find direct download links for public Instagram reels and videos with dlsta.">
+  <meta name="description" content="Find direct links for public Instagram photos, reels and videos with dlsta.">
   <title>dlsta — Save the moments worth keeping</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
@@ -24,35 +24,35 @@
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="eyebrow"><span class="sparkle" aria-hidden="true">✳</span> YOUR LITTLE CORNER OF THE INTERNET</div>
         <h1 id="hero-title">Good moments<br><em>are worth keeping.</em></h1>
-        <p class="hero-copy">Found a reel you love? Get a direct link to a public Instagram video in just a few clicks.</p>
+        <p class="hero-copy">Found something you love? Get a direct link to a public Instagram photo or video in just a few clicks.</p>
 
         <div class="tool-card">
-          <div class="tool-top"><div><span class="tool-label">THE VIDEO TOOL</span><h2>Let’s find your video.</h2></div><span class="step-indicator">01 / 01</span></div>
+          <div class="tool-top"><div><span class="tool-label">THE MEDIA TOOL</span><h2>Let’s find your media.</h2></div><span class="step-indicator">01 / 01</span></div>
           <form id="form">
             <label for="url">Instagram link</label>
             <div class="input-row">
               <span class="link-icon" aria-hidden="true">↗</span>
               <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url" required>
-              <button id="submit" type="submit"><span>Get video link</span><span aria-hidden="true">↗</span></button>
+              <button id="submit" type="submit"><span>Get media link</span><span aria-hidden="true">↗</span></button>
             </div>
             <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
           </form>
           <div id="message" class="message" role="status" aria-live="polite"></div>
-          <article id="result" class="result" hidden aria-label="Video result">
-            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram video" referrerpolicy="no-referrer"></div>
+          <article id="result" class="result" hidden aria-label="Media result">
+            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer"></div>
             <div class="result-body">
               <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
-              <h3>Your video is ready.</h3>
+              <h3 id="result-title">Your media is ready.</h3>
               <p id="caption" class="caption"></p>
               <div class="result-actions">
-                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct video <span aria-hidden="true">↗</span></a>
+                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
-              <label class="direct-label" for="direct-url">Direct video link</label>
+              <label class="direct-label" for="direct-url">Direct media link</label>
               <div class="direct-link-field">
-                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct video link">
+                <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct media link">
                 <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
-              <p class="download-note">The video opens directly from Instagram’s CDN. If it plays instead of downloading, use your browser’s save or download option. Links may expire.</p>
+              <p class="download-note">Media opens directly from Instagram’s CDN. Use your browser’s save or download option. Links may expire.</p>
             </div>
           </article>
         </div>
@@ -63,8 +63,8 @@
         <div class="wrap">
           <div class="section-heading"><div><div class="eyebrow">THE SIMPLE STUFF</div><h2>Three steps. <em>That’s it.</em></h2></div><p>No accounts, no complicated setup.<br>Just a link and a little magic.</p></div>
           <div class="steps">
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel or video and copy its link.</p></article>
-            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the video.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel, video, or photo post and copy its link.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the media.</p></article>
             <article><div class="step-top"><span class="step-icon" aria-hidden="true">↓</span><span>03</span></div><h3>Save your find</h3><p>Open the direct link and save it, with the creator’s permission.</p></article>
           </div>
         </div>
