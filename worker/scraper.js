@@ -36,3 +36,13 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
+async function upstream(url, accept = 'text/html') {
+  const response = await fetch(url, {redirect: 'manual', signal: AbortSignal.timeout(4500), headers: {accept, 'user-agent': 'Mozilla/5.0 (compatible; public-media-fetcher/1.0)'}});
+  // Do not follow redirects (including login redirects) or misclassify them as deleted.
+  if (response.status === 404) return {status: 404, body: ''};
+  if (!response.ok) return {status: response.status, body: ''};
+  const body = await response.text();
+  if (body.length > 3_000_000) throw new Error('UPSTREAM');
+  return {status: response.status, body};
+}
+
