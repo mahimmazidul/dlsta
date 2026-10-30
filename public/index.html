@@ -78,7 +78,13 @@
           </div>
           <div id="message" class="message" role="status" aria-live="polite"></div>
           <article id="result" class="result" hidden aria-label="Media result">
-            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer"></div>
+            <div class="result-image" id="image-wrap" role="group" aria-roledescription="carousel" aria-label="Media preview" tabindex="-1" hidden>
+              <img id="thumbnail" alt="Preview of the Instagram post" referrerpolicy="no-referrer">
+              <span class="preview-empty" id="preview-empty" hidden>Preview unavailable</span>
+              <button type="button" class="preview-nav preview-prev" id="preview-prev" aria-label="Previous available item" hidden><span aria-hidden="true">‹</span></button>
+              <button type="button" class="preview-nav preview-next" id="preview-next" aria-label="Next available item" hidden><span aria-hidden="true">›</span></button>
+              <span class="preview-counter" id="preview-counter" aria-live="polite" aria-atomic="true" hidden></span>
+            </div>
             <div class="result-body">
               <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
               <h3 id="result-title">Your media is ready.</h3>

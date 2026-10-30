@@ -6,9 +6,9 @@ import vm from 'node:vm';
 async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
-  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
+  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
-      attributes: {}, setAttribute(name, value) { this.attributes[name] = value; },
+      attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
@@ -214,4 +214,43 @@ test('a new link entered during a lookup is not erased by the previous result', 
   release(); await pending;
   assert.equal(elements.url.value,'https://instagram.com/p/newer/');
   assert.equal(elements.submit.firstElementChild.textContent,'Get media link');
+});
+
+
+test('carousel arrows skip unavailable items and keep preview, direct link and count in sync', async () => {
+  const payload = {success:true, mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1.jpg',totalItems:3,partial:true,items:[
+    {position:1,mediaType:'photo',available:true,mediaUrl:'https://x.fbcdn.net/1.jpg',thumbnailUrl:'https://x.fbcdn.net/1.jpg'},
+    {position:2,mediaType:'video',available:false},
+    {position:3,mediaType:'video',available:true,mediaUrl:'https://x.fbcdn.net/3.mp4',thumbnailUrl:''}]};
+  const {elements,copied} = await setup({payload});
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['preview-prev'].disabled,true); assert.equal(elements['preview-next'].disabled,false);
+  assert.equal(elements['preview-counter'].textContent,'1 / 3'); assert.equal(elements['preview-next'].hidden,false);
+  elements['preview-next'].events.click();
+  assert.equal(elements.download.href,'https://x.fbcdn.net/3.mp4');
+  assert.equal(elements['preview-counter'].textContent,'3 / 3');
+  assert.equal(elements['preview-next'].disabled,true); assert.equal(elements['preview-prev'].disabled,false);
+  assert.equal(elements['preview-empty'].hidden,false); assert.equal(elements.thumbnail.hidden,true);
+  assert.equal(elements['image-wrap'].hidden,false);
+  await elements.copy.events.click(); assert.equal(copied(),'https://x.fbcdn.net/3.mp4');
+  elements['preview-prev'].events.click(); assert.equal(elements.download.href,'https://x.fbcdn.net/1.jpg');
+});
+
+test('preview supports horizontal swipes and keyboard while ignoring vertical gestures', async () => {
+  const payload = {success:true,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1.jpg',totalItems:2,items:[1,2].map(i=>({position:i,mediaType:'photo',available:true,mediaUrl:`https://x.fbcdn.net/${i}.jpg`,thumbnailUrl:`https://x.fbcdn.net/${i}.jpg`}))};
+  const {elements} = await setup({payload}); await elements.form.events.submit({preventDefault(){}});
+  const start = (x,y) => elements['image-wrap'].events.touchstart({touches:[{clientX:x,clientY:y}]});
+  const end = (x,y) => elements['image-wrap'].events.touchend({changedTouches:[{clientX:x,clientY:y}]});
+  start(200,50); end(120,53); assert.equal(elements['preview-counter'].textContent,'2 / 2');
+  start(100,50); end(108,150); assert.equal(elements['preview-counter'].textContent,'2 / 2');
+  let prevented=false;
+  elements['image-wrap'].events.keydown({target:elements['image-wrap'],key:'ArrowLeft',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true); assert.equal(elements['preview-counter'].textContent,'1 / 2');
+  start(200,50); elements['image-wrap'].events.touchcancel(); end(100,50); assert.equal(elements['preview-counter'].textContent,'1 / 2');
+});
+
+test('single media has no carousel navigation controls', async () => {
+  const {elements} = await setup({photo:true}); await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['preview-next'].hidden,true); assert.equal(elements['preview-prev'].hidden,true);
+  assert.equal(elements['preview-counter'].hidden,true); assert.equal(elements['image-wrap'].attributes.tabindex,'-1');
 });

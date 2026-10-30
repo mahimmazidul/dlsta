@@ -13,7 +13,37 @@ const directInput = document.querySelector('#direct-url');
 const urlInput = document.querySelector('#url');
 const mediaList = document.querySelector('#media-list');
 const mediaCount = document.querySelector('#media-count');
+const imageWrap = document.querySelector('#image-wrap');
+const image = document.querySelector('#thumbnail');
+const previewEmpty = document.querySelector('#preview-empty');
+const previousMedia = document.querySelector('#preview-prev');
+const nextMedia = document.querySelector('#preview-next');
+const previewCounter = document.querySelector('#preview-counter');
 let directUrl = '';
+let moveMedia = () => {};
+let touchStart = null;
+
+previousMedia.addEventListener('click', () => moveMedia(-1));
+nextMedia.addEventListener('click', () => moveMedia(1));
+imageWrap.addEventListener('keydown', event => {
+  if (event.target !== imageWrap || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  moveMedia(event.key === 'ArrowLeft' ? -1 : 1);
+});
+// Preserve vertical page scrolling; only a clear horizontal swipe changes media.
+imageWrap.addEventListener('touchstart', event => {
+  const touch = event.touches.length === 1 ? event.touches[0] : null;
+  touchStart = touch ? {x:touch.clientX, y:touch.clientY} : null;
+}, {passive:true});
+imageWrap.addEventListener('touchend', event => {
+  const touch = event.changedTouches[0];
+  if (touchStart && touch) {
+    const dx = touch.clientX - touchStart.x, dy = touch.clientY - touchStart.y;
+    if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.2) moveMedia(dx < 0 ? 1 : -1);
+  }
+  touchStart = null;
+}, {passive:true});
+imageWrap.addEventListener('touchcancel', () => { touchStart = null; }, {passive:true});
 
 function updateSubmitLabel() {
   if (submit.disabled) return;
@@ -42,6 +72,8 @@ function isAllowedCdnUrl(value) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   result.hidden = true;
+  moveMedia = () => {};
+  touchStart = null;
   directUrl = '';
   directInput.value = '';
   message.textContent = '';
@@ -94,19 +126,38 @@ form.addEventListener('submit', async (event) => {
     const available = items.filter(item => item.available).length;
     mediaCount.textContent = data.partial ? `${available} items available; some could not be retrieved.` : `${items.length} items · Select one to open or copy`;
     const buttons = [];
-    function selectItem(item, selectedIndex) {
+    let selectedIndex = -1;
+    const total = Math.max(items.length, Number(data.totalItems) || 0);
+    const neighbor = (index, direction) => {
+      for (let i = index + direction; i >= 0 && i < items.length; i += direction) if (items[i].available) return i;
+      return -1;
+    };
+    function selectItem(item, index) {
       if (!item.available) return;
+      selectedIndex = index;
       directUrl = item.mediaUrl;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
       download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
       directInput.value = directUrl;
-      const imageWrap = document.querySelector('#image-wrap');
-      const image = document.querySelector('#thumbnail');
-      imageWrap.hidden = !isAllowedCdnUrl(item.thumbnailUrl);
-      if (!imageWrap.hidden) image.src = item.thumbnailUrl;
-      buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selectedIndex)));
+      const hasPreview = isAllowedCdnUrl(item.thumbnailUrl);
+      image.hidden = !hasPreview;
+      previewEmpty.hidden = hasPreview;
+      imageWrap.hidden = !hasPreview && items.length <= 1;
+      if (hasPreview) image.src = item.thumbnailUrl;
+      else image.removeAttribute('src');
+      const multiple = items.length > 1;
+      imageWrap.setAttribute('tabindex', multiple ? '0' : '-1');
+      previousMedia.hidden = nextMedia.hidden = previewCounter.hidden = !multiple;
+      previousMedia.disabled = neighbor(index, -1) < 0;
+      nextMedia.disabled = neighbor(index, 1) < 0;
+      previewCounter.textContent = `${item.position} / ${total}`;
+      buttons.forEach((button, buttonIndex) => button.setAttribute('aria-pressed', String(buttonIndex === index)));
     }
+    moveMedia = direction => {
+      const index = neighbor(selectedIndex, direction);
+      if (index >= 0) selectItem(items[index], index);
+    };
     if (items.length > 1) items.forEach((item, index) => {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'media-choice'; button.disabled = !item.available;
