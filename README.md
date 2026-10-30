@@ -1,4 +1,4 @@
-# Insta DL
+# DLSTA — Insta DL: Instagram Reels & Video Downloader
 
 A small Cloudflare Worker + static UI for resolving **public** Instagram videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
