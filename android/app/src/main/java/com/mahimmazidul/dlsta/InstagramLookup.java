@@ -26,7 +26,12 @@ final class InstagramLookup {
     static final String GRAPHQL = "https://www.instagram.com/graphql/query";
     static final class HttpFailure extends Exception { final int status; HttpFailure(int status) { this.status=status; } }
     static final int MAX_BODY = 3_000_000;
-    private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36";
+    // Public Instagram embeds may send an empty logged-out app shell to a regular
+    // mobile browser UA. Use the same explicit public-fetcher identity as dlsta's
+    // web resolver; GraphQL/home continue to use a desktop browser identity.
+    private static final String EMBED_USER_AGENT = "Mozilla/5.0 (compatible; public-media-fetcher/1.0)";
+    private static final String DESKTOP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+    static String userAgentFor(String url) { return url.equals(GRAPHQL) || url.equals("https://www.instagram.com/") ? DESKTOP_USER_AGENT : EMBED_USER_AGENT; }
     interface Transport { String request(String url, String method, String body, Map<String,String> headers) throws Exception; }
     static final class Item {
         final String type, url, thumbnail; final int position;
@@ -79,7 +84,7 @@ final class InstagramLookup {
         HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
         try {
             c.setConnectTimeout(4500); c.setReadTimeout(6500); c.setInstanceFollowRedirects(false); c.setRequestMethod(method);
-            c.setRequestProperty("User-Agent",USER_AGENT); c.setRequestProperty("Accept",method.equals("POST")?"*/*":"text/html");
+            c.setRequestProperty("User-Agent",userAgentFor(url)); c.setRequestProperty("Accept",method.equals("POST")?"*/*":"text/html");
             for(Map.Entry<String,String> h:headers.entrySet())c.setRequestProperty(h.getKey(),h.getValue());
             if (body!=null) { c.setDoOutput(true); try(OutputStream out=c.getOutputStream()){ out.write(body.getBytes(StandardCharsets.UTF_8)); } }
             int status=c.getResponseCode(); if(status!=200)throw new HttpFailure(status);

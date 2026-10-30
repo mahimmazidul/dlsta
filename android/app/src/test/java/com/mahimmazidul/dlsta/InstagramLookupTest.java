@@ -37,6 +37,11 @@ public class InstagramLookupTest {
     @Test public void untypedThumbnailIsNotAStandalonePhoto() throws Exception {
         JSONObject root=new JSONObject().put("shortcode","ABC").put("display_url","https://media.fbcdn.net/cover.jpg");assertNull(InstagramLookup.parsePublic(embed(root),"ABC"));
     }
+    @Test public void embedRequestsUsePublicFetcherIdentity() {
+        assertTrue(InstagramLookup.userAgentFor("https://www.instagram.com/reel/ABC/embed/captioned/").contains("public-media-fetcher/1.0"));
+        assertTrue(InstagramLookup.userAgentFor(InstagramLookup.GRAPHQL).contains("Windows NT"));
+        assertTrue(InstagramLookup.userAgentFor("https://www.instagram.com/").contains("Windows NT"));
+    }
     @Test public void deviceSuccessNeverUsesFallback() throws Exception {
         List<String> requests=new ArrayList<>();String html=embed(photo("ABC"));
         InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body,headers)->{requests.add(url);return html;});
