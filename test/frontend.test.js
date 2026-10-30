@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200, mediaType = 'image/webp', mediaFail = false, deferredMedia = false} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
-  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
+  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'save-media', 'download-status', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
       style: {}, scrollHeight: 120, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
@@ -14,20 +14,23 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   elements.url.value = 'https://www.instagram.com/reel/example/';
   let copied = '';
   const requests = []; const requestBodies = [];
-  let release;
+  let release; let releaseMedia;
+  const mediaGate = deferredMedia ? new Promise(resolve => { releaseMedia = resolve; }) : null;
   const gate = deferred ? new Promise(resolve => { release = resolve; }) : null;
   let intervalCallback; let cleared = false;
   elements['media-list'].children = [];
   elements['media-list'].replaceChildren = function() { this.children = []; };
   elements['media-list'].appendChild = function(child) { this.children.push(child); };
-  const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}});
-  const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
-  const context = {URL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
+  const saved = []; let savedBlob;
+  class TestURL extends URL { static createObjectURL(blob) { savedBlob = blob; return 'blob:test'; } static revokeObjectURL() {} }
+  const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}, click(){saved.push({href:this.href, name:this.download});}, remove(){}});
+  const doc = {createElement, body:{appendChild(){}}, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
+  const context = {URL:TestURL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
-    fetch: async (url, options) => { requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
+    fetch: async (url, options) => { if (String(url) !== '/api/scrape') { if (mediaFail) throw new Error('CORS'); if (mediaGate) await mediaGate; return new Response('original bytes', {headers:{'Content-Type':mediaType}}); } requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
     setTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
   vm.runInNewContext(source, context);
-  return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, release, tick: () => intervalCallback(), cleared: () => cleared};
+  return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, saved, savedBlob: () => savedBlob, release, releaseMedia, tick: () => intervalCallback(), cleared: () => cleared};
 }
 
 test('result presents and copies a direct CDN link', async () => {
@@ -264,4 +267,43 @@ test('full direct link wraps in an autosized readonly textarea', async () => {
   const {elements} = await setup();
   await elements.form.events.submit({preventDefault(){}});
   assert.equal(elements['direct-url'].style.height, '120px');
+});
+
+
+test('named download preserves WebP, JPEG and MP4 bytes and uses response MIME extension', async () => {
+  for (const [mime,extension] of [['image/webp','webp'],['image/jpeg','jpg'],['video/mp4','mp4']]) {
+    const {elements,saved,savedBlob} = await setup({mediaType:mime});
+    await elements.form.events.submit({preventDefault(){}});
+    await elements['save-media'].events.click();
+    assert.equal(saved[0].name, `instagram_example.${extension}`);
+    assert.equal(saved[0].href, 'blob:test');
+    assert.equal(await savedBlob().text(), 'original bytes');
+    assert.match(elements['download-status'].textContent, /started/);
+    assert.equal(elements['save-media'].disabled, false);
+  }
+});
+
+test('carousel download captures the selected slide even if selection changes mid-download', async () => {
+  const payload={success:true,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1.jpg',items:[1,2].map(i=>({position:i,mediaType:'photo',available:true,mediaUrl:`https://x.fbcdn.net/${i}.jpg`}))};
+  const {elements,saved,releaseMedia}=await setup({payload,mediaType:'image/jpeg',deferredMedia:true});
+  elements.url.value='https://www.instagram.com/p/AbC_123/';
+  await elements.form.events.submit({preventDefault(){}});
+  elements['preview-next'].events.click();
+  const pending=elements['save-media'].events.click();
+  elements['preview-prev'].events.click();
+  releaseMedia(); await pending;
+  assert.equal(saved[0].name,'instagram_AbC_123_2.jpg');
+  assert.equal(elements.download.href,'https://x.fbcdn.net/1.jpg');
+});
+
+test('download errors and unsupported MIME never invent a filename; direct link remains', async () => {
+  for (const options of [{mediaFail:true},{mediaType:'application/octet-stream'}]) {
+    const {elements,saved}=await setup(options);
+    await elements.form.events.submit({preventDefault(){}});
+    await elements['save-media'].events.click();
+    assert.equal(saved.length,0);
+    assert.match(elements['download-status'].textContent,/Open direct media/);
+    assert.equal(elements.download.href,'https://media.fbcdn.net/video.mp4?x=1');
+    assert.equal(elements['save-media'].disabled,false);
+  }
 });

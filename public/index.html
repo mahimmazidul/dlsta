@@ -92,14 +92,16 @@
               <div id="media-list" class="media-list" aria-label="Select a carousel item" hidden></div>
               <p id="media-count" class="media-count" role="status" hidden></p>
               <div class="result-actions">
-                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
+                <button id="save-media" type="button" class="primary-action">Download media <span aria-hidden="true">↓</span></button>
+                <a id="download" class="secondary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
+              <p id="download-status" class="download-status" role="status" aria-live="polite"></p>
               <label class="direct-label" for="direct-url">Direct media link</label>
               <div class="direct-link-field">
                 <textarea id="direct-url" rows="1" readonly spellcheck="false" aria-label="Direct media link"></textarea>
                 <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
-              <p class="download-note">Opens directly from Instagram’s CDN. Use your browser’s save option; links may expire.</p>
+              <p class="download-note">Downloads go directly from Instagram’s CDN without conversion. Links may expire.</p>
             </div>
           </article>
         </div>

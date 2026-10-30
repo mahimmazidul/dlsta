@@ -8,6 +8,8 @@ const loadingHint = document.querySelector('#loading-hint');
 const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
+const saveMedia = document.querySelector('#save-media');
+const downloadStatus = document.querySelector('#download-status');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
 const urlInput = document.querySelector('#url');
@@ -20,6 +22,8 @@ const previousMedia = document.querySelector('#preview-prev');
 const nextMedia = document.querySelector('#preview-next');
 const previewCounter = document.querySelector('#preview-counter');
 let directUrl = '';
+let selectedFilename = '';
+let selectedType = 'media';
 let moveMedia = () => {};
 let touchStart = null;
 
@@ -83,6 +87,9 @@ form.addEventListener('submit', async (event) => {
   moveMedia = () => {};
   touchStart = null;
   directUrl = '';
+  selectedFilename = '';
+  selectedType = 'media';
+  downloadStatus.textContent = '';
   directInput.value = '';
   message.textContent = '';
   message.dataset.kind = '';
@@ -144,6 +151,11 @@ form.addEventListener('submit', async (event) => {
       if (!item.available) return;
       selectedIndex = index;
       directUrl = item.mediaUrl;
+      const shortcode = new URL(submittedUrl).pathname.split('/')[2];
+      selectedType = item.mediaType;
+      selectedFilename = `instagram_${shortcode}${items.length > 1 ? `_${item.position}` : ''}`;
+      downloadStatus.textContent = '';
+      if (!saveMedia.disabled) saveMedia.firstChild.textContent = `Download ${item.mediaType} `;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
       download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
@@ -192,6 +204,39 @@ form.addEventListener('submit', async (event) => {
     message.dataset.kind = '';
   } catch (error) { message.dataset.kind = ''; message.textContent = error.message || 'Something went wrong. Please try again.'; }
   finally { clearInterval(hintTimer); loading.hidden = true; submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
+});
+
+// Fetch directly from the CDN in the user's browser, never through the Worker.
+// Preserve the response bytes; use its MIME type rather than guessing from the URL.
+saveMedia.addEventListener('click', async () => {
+  if (!directUrl || !selectedFilename || saveMedia.disabled) return;
+  const url = directUrl, filename = selectedFilename;
+  saveMedia.disabled = true;
+  saveMedia.firstChild.textContent = 'Preparing download ';
+  downloadStatus.textContent = 'Downloading directly from Instagram’s CDN…';
+  try {
+    const response = await fetch(url, {mode:'cors', credentials:'omit', referrerPolicy:'no-referrer'});
+    if (!response.ok) throw new Error('Download unavailable');
+    const blob = await response.blob();
+    const types = new Map([['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp'], ['image/avif','avif'], ['image/gif','gif'], ['video/mp4','mp4'], ['video/webm','webm'], ['video/quicktime','mov']]);
+    const extension = types.get(blob.type.toLowerCase().split(';')[0].trim());
+    if (!extension || !blob.size) throw new Error('Unsupported media type');
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${filename}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    downloadStatus.textContent = 'Download started in your browser.';
+  } catch {
+    downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
+  } finally {
+    saveMedia.disabled = false;
+    // The selection may have changed while the download was in progress.
+    saveMedia.firstChild.textContent = `Download ${selectedType === 'unknown' ? 'media' : selectedType} `;
+  }
 });
 
 copy.addEventListener('click', async () => {
