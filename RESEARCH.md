@@ -78,7 +78,7 @@ The current project is published under the Apache License 2.0; see `LICENSE` and
 
 ## Subsequent project review
 
-The current version adds direct links for public photos as well as videos. A NASA photo (`https://www.instagram.com/p/9w42bQoaI1/`) and reel (`https://www.instagram.com/reel/Dbn-XJhk0_-/`) were tested locally: both resolved to allowlisted HTTPS CDN URLs and those URLs returned HTTP 200 to HEAD at the time of testing. Links expire, and upstream or production network behavior may differ. For carousels, only one media item is returned; the UI does not support full-album download.
+The current version adds direct links for public photos as well as videos. A NASA photo (`https://www.instagram.com/p/9w42bQoaI1/`) and reel (`https://www.instagram.com/reel/Dbn-XJhk0_-/`) were tested locally: both resolved to allowlisted HTTPS CDN URLs and those URLs returned HTTP 200 to HEAD at the time of testing. Links expire, and upstream or production network behavior may differ. At that earlier point only one carousel item was returned; the later carousel update adds individual links for available items.
 
 Responsive layouts were checked in headless Chromium at widths 320, 375, 700, 768, 1024 and 1440 px, including long captions and the result panel. The mobile footer was centered and the paste handler was exercised. The audit also added bounded request/upstream reads and a 503 response when KV fails. The configured Cloudflare Worker service name was subsequently changed from `insta-dl` to `dlsta`; see the later host-aware deployment update and README for migration details. See the README for one-click deployment instructions and the KV consistency limitations.
 
@@ -98,7 +98,10 @@ A GitHub Actions deployment workflow now tests and deploys the configured `dlsta
 Lookup failures now produce a sanitized stage/status diagnostic in Worker logs to help distinguish regional upstream failures. It contains no post URLs, tokens, cookies, captions, response bodies or media links. A real failure from the affected Cloudflare region is still needed to determine its cause.
 
 
-A later regional failure returned HTTP 200 for the embed, page, homepage and GraphQL, but GraphQL contained no item. The resolver now parses matching structured `contextJSON` media from public embeds before GraphQL, with safe first-carousel-item and photo/video checks. Local tests on the reported post and a public reel returned photo and video CDN URLs whose HEAD requests were HTTP 200; results in the affected Cloudflare region still require an on-site test.
+A later regional failure returned HTTP 200 for the embed, page, homepage and GraphQL, but GraphQL contained no item. The resolver now parses matching structured `contextJSON` media from public embeds before GraphQL, with safe photo/video checks; a subsequent update added all available carousel items. Local tests on the reported post and a public reel returned photo and video CDN URLs whose HEAD requests were HTTP 200; results in the affected Cloudflare region still require an on-site test.
+
+
+Carousel support now returns and displays each available item individually and marks missing items; no Cloudflare media proxy is used. For the reported three-photo post, local Worker tests retrieved all three media URLs, and each downloaded image measured 1440 × 1440 pixels. A public reel URL returned HTTP 200 to HEAD. The resolver chooses the largest dimensions among exposed image/video renditions, but a single supplied video URL or original upload quality cannot be independently guaranteed. Browser interaction was tested at 320, 375, 768 and 1440 CSS pixels.
 
 # Phase 4 — Full code
 
@@ -283,8 +286,44 @@ function field(html, name) {
   if (!m) return '';
   try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
 }
-// The public embed can include a JSON-encoded contextJSON string. Only use a
-// matching post's structured first media item; never guess that a cover is a photo.
+// Prefer the largest explicitly sized allowlisted rendition, not array order.
+function bestVariant(variants) {
+  if (!Array.isArray(variants)) return '';
+  const valid = variants.filter(v => validMediaUrl(v?.url || v?.src));
+  valid.sort((a, b) => {
+    const area = v => (Number(v.width ?? v.config_width) || 0) * (Number(v.height ?? v.config_height) || 0);
+    return area(b) - area(a) || (Number(b.bitrate || b.bandwidth) || 0) - (Number(a.bitrate || a.bandwidth) || 0);
+  });
+  return valid[0]?.url || valid[0]?.src || '';
+}
+function structuredMedia(root) {
+  const edges = root?.edge_sidecar_to_children?.edges;
+  const carousel = Array.isArray(root?.carousel_media) || Array.isArray(edges) || root?.__typename === 'GraphSidecar';
+  const nodes = Array.isArray(root?.carousel_media) ? root.carousel_media : Array.isArray(edges) ? edges.map(e => e?.node) : carousel ? [] : [root];
+  if (!nodes.length) return null;
+  const reported = Number(root?.carousel_media_count ?? root?.edge_sidecar_to_children?.count) || 0;
+  const totalItems = Math.max(nodes.length, reported);
+  const hasMore = root?.edge_sidecar_to_children?.page_info?.has_next_page === true;
+  const items = nodes.slice(0, 50).map((item, index) => {
+    const isVideo = item?.media_type === 2 || item?.is_video === true || item?.__typename === 'GraphVideo';
+    const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
+    const image = bestVariant([...(Array.isArray(item?.image_versions2?.candidates) ? item.image_versions2.candidates : []), ...(Array.isArray(item?.display_resources) ? item.display_resources : [])]) || (validMediaUrl(item?.display_url) ? item.display_url : '');
+    const video = bestVariant(item?.video_versions) || (validMediaUrl(item?.video_url) ? item.video_url : '');
+    const mediaType = isVideo ? 'video' : isPhoto ? 'photo' : 'unknown';
+    const mediaUrl = isVideo ? video : isPhoto ? image : '';
+    if (!mediaUrl) return {position:index + 1, mediaType, available:false};
+    return {position:index + 1, mediaType, mediaUrl, thumbnailUrl:image, available:true};
+  });
+  const first = items.find(item => item.available);
+  if (!first) return null;
+  const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text;
+  const caption = typeof text === 'string' ? text.slice(0, 2000) : '';
+  const result = {mediaType:first.mediaType, mediaUrl:first.mediaUrl, [first.mediaType === 'photo' ? 'photoUrl' : 'videoUrl']:first.mediaUrl, thumbnailUrl:first.thumbnailUrl, caption};
+  if (carousel) Object.assign(result, {items, totalItems, partial:hasMore || items.length < totalItems || items.some(item => !item.available)});
+  return result;
+}
+
+// Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
 export function parseEmbedMedia(html, shortcode) {
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
@@ -292,18 +331,8 @@ export function parseEmbedMedia(html, shortcode) {
       const data = JSON.parse(JSON.parse(match[1]));
       const root = data?.gql_data?.shortcode_media;
       if (!root || root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) continue;
-      const children = root.edge_sidecar_to_children?.edges;
-      const isCarousel = root.__typename === 'GraphSidecar' || Array.isArray(children);
-      const item = isCarousel ? children?.[0]?.node : root;
-      if (!item) continue;
-      const image = validMediaUrl(item.display_url) ? item.display_url : '';
-      const video = validMediaUrl(item.video_url) ? item.video_url : '';
-      const text = root.edge_media_to_caption?.edges?.[0]?.node?.text;
-      const caption = typeof text === 'string' ? text.slice(0, 2000) : '';
-      const isVideo = item.is_video === true || item.__typename === 'GraphVideo';
-      const isPhoto = item.is_video === false || item.__typename === 'GraphImage';
-      if (isVideo && video) return {mediaType:'video', mediaUrl:video, videoUrl:video, thumbnailUrl:image, caption};
-      if (!isVideo && isPhoto && image) return {mediaType:'photo', mediaUrl:image, photoUrl:image, thumbnailUrl:image, caption};
+      const result = structuredMedia(root);
+      if (result) return result;
     } catch { /* malformed or unrelated embed context: try another */ }
   }
   return null;
@@ -394,17 +423,13 @@ export async function scrapeInstagram(raw, options = {}) {
     if (response.ok) {
       const data = JSON.parse(await readUpstreamText(response));
       const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
-      // Return the first carousel item only; never mistake a video's cover for a photo.
       diagnostic.media = root ? 'no_supported_media' : 'no_item';
-      const item = root?.carousel_media?.[0] || root?.edge_sidecar_to_children?.edges?.[0]?.node || root;
-      const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
-      const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
-      if (validMediaUrl(image)) thumbnailUrl = image;
-      const text = root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption;
-      caption = typeof text === 'string' ? text.slice(0, 2000) : '';
-      if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
-      const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
-      if (isPhoto && validMediaUrl(image)) return {mediaType: 'photo', mediaUrl: image, photoUrl: image, thumbnailUrl: image, caption};
+      const result = structuredMedia(root);
+      if (result) {
+        if (!result.caption) result.caption = caption;
+        if (!result.thumbnailUrl) result.thumbnailUrl = thumbnailUrl;
+        return result;
+      }
     }
   } catch (error) { diagnostic[`${currentStage}Error`] = failureKind(error); }
   // Emit only the sanitized stages when the entire lookup fails.
@@ -490,6 +515,8 @@ export async function scrapeInstagram(raw, options = {}) {
               <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
               <h3 id="result-title">Your media is ready.</h3>
               <p id="caption" class="caption"></p>
+              <div id="media-list" class="media-list" aria-label="Select a carousel item" hidden></div>
+              <p id="media-count" class="media-count" role="status" hidden></p>
               <div class="result-actions">
                 <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open direct media <span aria-hidden="true">↗</span></a>
               </div>
@@ -524,7 +551,7 @@ export async function scrapeInstagram(raw, options = {}) {
             <p>Only save content you have permission to use. dlsta is an independent project and isn’t affiliated with Instagram or Meta.</p>
           </div>
           <div class="faq" aria-label="Frequently asked questions">
-            <details><summary>Can I save Instagram photos and Reels?</summary><p>dlsta supports public photo posts, Reels and videos when Instagram makes the media available. For a carousel, it returns one item rather than the whole album.</p></details>
+            <details><summary>Can I save Instagram photos and Reels?</summary><p>dlsta supports public photo posts, Reels and videos when Instagram makes the media available. For a carousel, select each available photo or video. Some items may be unavailable.</p></details>
             <details><summary>Why won’t a link work?</summary><p>Private, deleted, restricted or temporarily blocked posts can’t be resolved. Instagram can also change how public media is served. Direct links can expire, so try finding the post again.</p></details>
             <details><summary>How do I save the media?</summary><p>Open or copy the direct link. If your browser displays the photo or plays the video, use its save or download option. The file is served by Instagram’s CDN.</p></details>
           </div>
@@ -551,6 +578,9 @@ export async function scrapeInstagram(raw, options = {}) {
 /* Useful, readable content for visitors and search engines. */
 .about-section{border-top:1px solid #2c3228;padding:82px 0 88px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{font-size:clamp(29px,3.6vw,41px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 21px}.about-copy h2 em{font-style:normal;color:var(--accent)}.about-copy p,.faq p{color:#9ba595;font-size:13px;line-height:1.75;margin:0 0 14px}.faq details{border-bottom:1px solid #343b30}.faq details:first-child{border-top:1px solid #343b30}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 28px 20px 0;font-size:13px;font-weight:650;line-height:1.5;color:#e9eee3}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px;font-weight:400}.faq details[open] summary::after{content:'−'}.faq p{padding-right:20px}.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:700px){.about-section{padding:60px 0}.about-grid{grid-template-columns:1fr;gap:25px}.about-copy h2{font-size:31px}}
 
+/* Carousel items remain individual direct-to-CDN downloads. */
+.media-list{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding:3px 0 7px}.media-list[hidden],.media-count[hidden]{display:none}.media-choice{flex:0 0 76px;min-width:0;border:1px solid #48523e;background:#171d15;border-radius:8px;color:#c3cfb9;overflow:hidden;padding:0;cursor:pointer}.media-choice[aria-pressed="true"]{border:2px solid #d8efab;color:#eafbdc}.media-choice img{display:block;width:100%;height:64px;object-fit:cover}.media-choice span{display:block;padding:6px 3px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}.media-count{font-size:10px;line-height:1.4;color:#aeb9a7;margin:5px 0 0}
+
 ````
 
 ## `public/app.js`
@@ -567,6 +597,8 @@ const download = document.querySelector('#download');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
 const urlInput = document.querySelector('#url');
+const mediaList = document.querySelector('#media-list');
+const mediaCount = document.querySelector('#media-count');
 let directUrl = '';
 
 function isAllowedCdnUrl(value) {
@@ -598,16 +630,45 @@ form.addEventListener('submit', async (event) => {
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to find media. Please try again.');
     const mediaUrl = data.mediaUrl || data.videoUrl;
     if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
-    const mediaType = data.mediaType === 'photo' ? 'photo' : 'video';
-    directUrl = mediaUrl;
-    document.querySelector('#result-title').textContent = `Your ${mediaType} is ready.`;
-    download.firstChild.textContent = `Open direct ${mediaType} `;
-    download.href = directUrl; // Direct to Instagram's CDN; the Worker does not proxy video bytes.
-    directInput.value = directUrl;
-    const imageWrap = document.querySelector('#image-wrap');
-    const image = document.querySelector('#thumbnail');
-    imageWrap.hidden = !isAllowedCdnUrl(data.thumbnailUrl);
-    if (!imageWrap.hidden) image.src = data.thumbnailUrl;
+    const rawItems = Array.isArray(data.items) && data.items.length ? data.items : [{position:1, mediaType:data.mediaType, mediaUrl, thumbnailUrl:data.thumbnailUrl, available:true}];
+    const items = rawItems.map((item, index) => ({...item, position:item.position || index + 1,
+      available:item.available !== false && isAllowedCdnUrl(item.mediaUrl),
+      mediaType:item.mediaType === 'photo' ? 'photo' : item.mediaType === 'video' ? 'video' : 'unknown'}));
+    mediaList.replaceChildren();
+    mediaList.hidden = items.length <= 1;
+    mediaCount.hidden = items.length <= 1 && !data.partial;
+    const available = items.filter(item => item.available).length;
+    mediaCount.textContent = data.partial ? `${available} items available; some could not be retrieved.` : `${items.length} items · Select one to open or copy`;
+    const buttons = [];
+    function selectItem(item, selectedIndex) {
+      if (!item.available) return;
+      directUrl = item.mediaUrl;
+      document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
+      download.firstChild.textContent = `Open direct ${item.mediaType} `;
+      download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
+      directInput.value = directUrl;
+      const imageWrap = document.querySelector('#image-wrap');
+      const image = document.querySelector('#thumbnail');
+      imageWrap.hidden = !isAllowedCdnUrl(item.thumbnailUrl);
+      if (!imageWrap.hidden) image.src = item.thumbnailUrl;
+      buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selectedIndex)));
+    }
+    if (items.length > 1) items.forEach((item, index) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'media-choice'; button.disabled = !item.available;
+      button.setAttribute('aria-label', `Item ${item.position}: ${item.available ? item.mediaType : 'unavailable'}`);
+      button.setAttribute('aria-pressed', 'false');
+      if (isAllowedCdnUrl(item.thumbnailUrl)) {
+        const thumb = document.createElement('img'); thumb.src = item.thumbnailUrl; thumb.alt = ''; thumb.referrerPolicy = 'no-referrer';
+        button.appendChild(thumb);
+      }
+      const label = document.createElement('span'); label.textContent = item.available ? `${item.position} · ${item.mediaType}` : `${item.position} · unavailable`;
+      button.appendChild(label); button.addEventListener('click', () => selectItem(item, index));
+      buttons.push(button); mediaList.appendChild(button);
+    });
+    const firstAvailable = items.findIndex(item => item.available);
+    if (firstAvailable < 0) throw new Error('No supported media links were returned.');
+    selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
   } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
@@ -866,8 +927,8 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 
 ## What it does
 
-- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, only one item is returned; full-album downloading is not supported.
-- Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, available photos and videos are shown individually; unavailable items are indicated. Each item opens directly from Instagram’s CDN.
+- Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
 - Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. On desktop, paste a supported Instagram URL anywhere outside another editable field to fill the link box.
 - Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
@@ -926,7 +987,7 @@ For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the c
 
 ## API
 
-- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, mediaType, mediaUrl, thumbnailUrl, caption}` on success, plus `videoUrl` or `photoUrl` for the matching media type. `mediaType` is `video` or `photo`; empty `thumbnailUrl` and `caption` mean unavailable.
+- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, mediaType, mediaUrl, thumbnailUrl, caption}` on success, plus `videoUrl` or `photoUrl` for the matching media type. Carousels also return `items`, `totalItems`, and `partial`; each item reports its position, type, availability, and direct URL when available. `mediaType` is `video` or `photo`; empty `thumbnailUrl` and `caption` mean unavailable.
 - The response contains a direct Instagram CDN photo or video URL. Open or copy it from the UI; media bytes are delivered by Instagram, not proxied through this Worker. Signed CDN URLs expire and may be restricted. Some browsers play the video rather than forcing a download; use the browser’s save or download option.
 - Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
 
