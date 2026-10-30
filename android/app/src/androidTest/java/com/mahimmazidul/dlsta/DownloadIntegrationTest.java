@@ -6,6 +6,13 @@ import android.content.Context;
 import android.database.Cursor;
 import android.provider.MediaStore;
 import android.webkit.WebView;
+import android.webkit.WebChromeClient;
+import android.webkit.ConsoleMessage;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -38,10 +45,31 @@ public class DownloadIntegrationTest {
         }
         throw new AssertionError("Timed out waiting for native Android queue");
     }
+    private String probe(String host) {
+        try {
+            HttpURLConnection c=(HttpURLConnection)new URL("https://"+host+"/api/scrape").openConnection();
+            c.setConnectTimeout(12000); c.setReadTimeout(12000); c.setRequestMethod("OPTIONS");
+            c.setRequestProperty("Origin","https://appassets.androidplatform.net");
+            c.setRequestProperty("Access-Control-Request-Method","POST");
+            c.setRequestProperty("Access-Control-Request-Headers","content-type");
+            c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/132.0.0.0 Mobile Safari/537.36");
+            int code=c.getResponseCode(); String mitigated=c.getHeaderField("cf-mitigated"); String allow=c.getHeaderField("access-control-allow-origin"); c.disconnect();
+            return host+" HTTP "+code+" challenge="+mitigated+" allow-origin="+allow;
+        } catch(Exception e) { return host+" "+e.getClass().getSimpleName(); }
+    }
     @Test public void downloadsPublicCarouselAndSkipsSavedFilesOnRepeat() throws Exception {
         String prefix="instagram_DfGUZ1GjB-A_";
         Context context=ApplicationProvider.getApplicationContext(); ContentResolver resolver=context.getContentResolver();
+        final List<String> diagnostics=Collections.synchronizedList(new ArrayList<>());
+        String probes=probe("d.byaislop.cv")+"; "+probe("dlsta.byaislop.workers.dev");
         try (ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity -> { WebView web=activity.findViewById(R.id.webview); if (web != null) web.setWebChromeClient(new WebChromeClient() {
+                @Override public boolean onConsoleMessage(ConsoleMessage message) {
+                    String value=message.message().replaceAll("https?://[^\\s]+", "<url>");
+                    if (value.contains("CORS") || value.contains("net::") || value.contains("403")) diagnostics.add(value.substring(0,Math.min(value.length(),350)));
+                    return true;
+                }
+            }); });
             String ready="";
             for(int i=0;i<40;i++){ready=evaluate(scenario,"!!(window.dlstaNative&&document.querySelector('#form'))");if("true".equals(ready))break;Thread.sleep(500);}
             assertEquals("true",ready);
@@ -51,7 +79,7 @@ public class DownloadIntegrationTest {
                 String result=evaluate(scenario,"!document.querySelector('#result').hidden && document.querySelector('#media-list').children.length >= 3");
                 if("true".equals(result)){found=true;break;}
                 String error=text(scenario,"#message");
-                if(!error.isEmpty()) fail("Public lookup failed in Android WebView: "+error);
+                if(!error.isEmpty()) fail("Public lookup failed in Android WebView: "+error+"; probes: "+probes+"; console: "+diagnostics);
                 Thread.sleep(500);
             }
             assertTrue("Public carousel must load in the Android WebView",found);
