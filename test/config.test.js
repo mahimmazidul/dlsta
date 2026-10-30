@@ -29,7 +29,10 @@ test('deployment documentation distinguishes dashboard Worker name and automatic
 test('Cloudflare GitHub Action tests and deploys only using repository secrets', async () => {
   const workflow = await read('.github/workflows/cloudflare.yml');
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /branches:\s*\[main\]/);
+  assert.doesNotMatch(workflow, /^  (?:push|pull_request):/m);
+  const pages = await read('.github/workflows/pages.yml');
+  assert.match(pages, /workflow_dispatch:/);
+  assert.doesNotMatch(pages, /^  (?:push|pull_request):/m);
   assert.match(workflow, /run: npm ci/);
   assert.match(workflow, /run: npm test/);
   assert.match(workflow, /uses: cloudflare\/wrangler-action@v4/);
