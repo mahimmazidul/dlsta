@@ -166,7 +166,7 @@ public final class MainActivity extends Activity {
         if (hasFocus) applySystemBars();
     }
     private void buildScreen(String typed, String notice) {
-        colors(); applySystemBars();
+        colors();
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(background); scroll.setClipToPadding(false);
         scroll.setId(R.id.main_scroll);
@@ -182,7 +182,7 @@ public final class MainActivity extends Activity {
         page.setPadding(dp(horizontalPadding), dp(18), dp(horizontalPadding), dp(32));
         int pageWidth = Math.min(dp(600), getResources().getDisplayMetrics().widthPixels);
         FrameLayout.LayoutParams pageParams = new FrameLayout.LayoutParams(pageWidth, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        container.addView(page, pageParams); setContentView(scroll);
+        container.addView(page, pageParams); setContentView(scroll); applySystemBars();
 
         LinearLayout top = horizontal();
         ImageView icon = new ImageView(this); icon.setImageResource(R.drawable.ic_launcher); icon.setScaleType(ImageView.ScaleType.FIT_CENTER); icon.setContentDescription(null);
