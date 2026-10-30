@@ -103,6 +103,9 @@ A later regional failure returned HTTP 200 for the embed, page, homepage and Gra
 
 Carousel support now returns and displays each available item individually and marks missing items; no Cloudflare media proxy is used. For the reported three-photo post, local Worker tests retrieved all three media URLs, and each downloaded image measured 1440 × 1440 pixels. A public reel URL returned HTTP 200 to HEAD. The resolver chooses the largest dimensions among exposed image/video renditions, but a single supplied video URL or original upload quality cannot be independently guaranteed. Browser interaction was tested at 320, 375, 768 and 1440 CSS pixels.
 
+
+The interface now offers a user-initiated paste-and-lookup action with manual-paste fallback and a more compact mobile layout. Reel extraction also tries the alternative public /p/ embed if the /reel/ embed contains no usable media; failure diagnostics now identify broad embed parsing categories without logging the post, media, cookies or tokens. Three representative public reels returned video links with HTTP 200 CDN HEAD responses from the local test environment. The reel reported in the user log was not supplied, so its exact failure and DAC behavior remain unverified.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -324,17 +327,23 @@ function structuredMedia(root) {
 }
 
 // Public embeds include a JSON-encoded contextJSON string; verify the shortcode.
-export function parseEmbedMedia(html, shortcode) {
+export function parseEmbedMedia(html, shortcode, onInspect) {
+  let detail = 'no_context';
   const contexts = html.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g);
   for (const match of contexts) {
+    detail = 'invalid_context';
     try {
       const data = JSON.parse(JSON.parse(match[1]));
       const root = data?.gql_data?.shortcode_media;
-      if (!root || root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) continue;
+      if (!root) { detail = 'no_media_object'; continue; }
+      if (root.shortcode !== shortcode || (data.context?.shortcode && data.context.shortcode !== shortcode)) { detail = 'shortcode_mismatch'; continue; }
+      const hasVideo = root.media_type === 2 || root.is_video === true || root.__typename === 'GraphVideo';
+      detail = hasVideo && !root.video_url && !root.video_versions?.length ? 'video_url_missing' : 'media_unavailable';
       const result = structuredMedia(root);
       if (result) return result;
     } catch { /* malformed or unrelated embed context: try another */ }
   }
+  try { onInspect?.(detail); } catch { /* diagnostics are optional */ }
   return null;
 }
 
@@ -384,7 +393,12 @@ export async function scrapeInstagram(raw, options = {}) {
       }
     } catch (error) { diagnostic.oembed = failureKind(error); }
   }
-  for (const [stage, candidate] of [['embed', url + 'embed/captioned/'], ['page', url]]) {
+  const candidates = [['embed', url + 'embed/captioned/']];
+  // Instagram accepts both public /reel/ and /p/ embeds for many reels.
+  // Try the other form only when the first representation did not provide media.
+  if (url.includes('/reel/')) candidates.push(['alternateEmbed', url.replace('/reel/', '/p/') + 'embed/captioned/']);
+  candidates.push(['page', url]);
+  for (const [stage, candidate] of candidates) {
     try {
       const result = await upstream(candidate);
       diagnostic[stage] = result.status;
@@ -392,7 +406,7 @@ export async function scrapeInstagram(raw, options = {}) {
       if (result.status !== 200) continue;
       const html = result.body;
       diagnostic[`${stage}Context`] = html.includes('\"contextJSON\"') ? 'present' : 'absent';
-      const embedded = parseEmbedMedia(html, url.split('/')[4]);
+      const embedded = parseEmbedMedia(html, url.split('/')[4], detail => { diagnostic[`${stage}Detail`] = detail; });
       if (embedded) return embedded;
       const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
       const image = meta(html, 'og:image') || field(html, 'display_url');
@@ -503,8 +517,8 @@ export async function scrapeInstagram(raw, options = {}) {
             <label for="url">Instagram link</label>
             <div class="input-row">
               <span class="link-icon" aria-hidden="true">↗</span>
-              <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url" required>
-              <button id="submit" type="submit"><span>Get media link</span><span aria-hidden="true">↗</span></button>
+              <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url">
+              <button id="submit" type="submit"><span>Paste &amp; get link</span><span aria-hidden="true">↗</span></button>
             </div>
             <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
           </form>
@@ -581,6 +595,9 @@ export async function scrapeInstagram(raw, options = {}) {
 /* Carousel items remain individual direct-to-CDN downloads. */
 .media-list{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding:3px 0 7px}.media-list[hidden],.media-count[hidden]{display:none}.media-choice{flex:0 0 76px;min-width:0;border:1px solid #48523e;background:#171d15;border-radius:8px;color:#c3cfb9;overflow:hidden;padding:0;cursor:pointer}.media-choice[aria-pressed="true"]{border:2px solid #d8efab;color:#eafbdc}.media-choice img{display:block;width:100%;height:64px;object-fit:cover}.media-choice span{display:block;padding:6px 3px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}.media-count{font-size:10px;line-height:1.4;color:#aeb9a7;margin:5px 0 0}
 
+/* Keep the tool and one-tap paste action prominent on phones. */
+@media(max-width:700px){.hero{padding:32px 0 38px}.hero>.eyebrow,.hero-footnote{display:none}.hero h1{font-size:clamp(34px,8.5vw,49px);line-height:1.04;margin:0 0 12px}.hero-copy{font-size:12px;line-height:1.5;margin:0 auto 20px}.tool-card{padding:16px}.tool-top{margin-bottom:14px}.tool-top h2{font-size:17px}.form-note{margin-top:9px}.about-section{padding:44px 0}.how-section{padding:44px 0}}
+
 ````
 
 ## `public/app.js`
@@ -601,6 +618,11 @@ const mediaList = document.querySelector('#media-list');
 const mediaCount = document.querySelector('#media-count');
 let directUrl = '';
 
+function updateSubmitLabel() {
+  submit.firstElementChild.textContent = urlInput.value.trim() ? 'Get media link' : 'Paste & get link';
+}
+urlInput.addEventListener('input', updateSubmitLabel);
+
 function isAllowedCdnUrl(value) {
   try {
     const url = new URL(value);
@@ -619,6 +641,20 @@ form.addEventListener('submit', async (event) => {
   submit.disabled = true;
   submit.firstElementChild.textContent = 'Finding your media…';
   try {
+    if (!urlInput.value.trim()) {
+      try {
+        if (!navigator.clipboard?.readText) throw new Error('unavailable');
+        urlInput.value = (await navigator.clipboard.readText()).trim();
+      } catch {
+        urlInput.focus();
+        throw new Error('Clipboard access is unavailable. Paste the Instagram link into the box.');
+      }
+      if (!urlInput.value) { urlInput.focus(); throw new Error('Your clipboard is empty. Copy an Instagram link first.'); }
+      try {
+        const parsed = new URL(urlInput.value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !['instagram.com','www.instagram.com','m.instagram.com'].includes(parsed.hostname.toLowerCase()) || !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(parsed.pathname)) throw new Error('invalid');
+      } catch { urlInput.focus(); throw new Error('Copy a valid public Instagram post or reel link first.'); }
+    }
     if (!WORKER_URL && window.location.hostname.endsWith('.github.io')) {
       throw new Error('The Cloudflare Worker URL is not configured yet. Set WORKER_URL in public/app.js and redeploy.');
     }
@@ -672,7 +708,7 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
   } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
-  finally { submit.disabled = false; submit.firstElementChild.textContent = 'Get media link'; }
+  finally { submit.disabled = false; updateSubmitLabel(); }
 });
 
 copy.addEventListener('click', async () => {
@@ -704,6 +740,7 @@ document.addEventListener('paste', (event) => {
         !/^\/(p|reel|tv)\/[A-Za-z0-9_-]{1,32}\/?$/.test(url.pathname)) return;
     event.preventDefault();
     urlInput.value = text;
+    updateSubmitLabel();
     urlInput.focus();
   } catch { /* unrelated text is left alone */ }
 });
@@ -929,7 +966,7 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 
 - Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, available photos and videos are shown individually; unavailable items are indicated. Each item opens directly from Instagram’s CDN.
 - Shows the caption and thumbnail when available, plus a direct, selectable media URL and copy button. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
-- Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. On desktop, paste a supported Instagram URL anywhere outside another editable field to fill the link box.
+- Opens the photo or video from Instagram's CDN; Cloudflare does **not** stream or proxy the media file. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
 - Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
 **Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks direct media URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
@@ -995,7 +1032,7 @@ The rate limiter targets **10 API requests per IP per fixed minute**, storing sh
 
 ## Troubleshooting lookup failures
 
-Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
+Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 
 ## Cloudflare Free plan usage
 
