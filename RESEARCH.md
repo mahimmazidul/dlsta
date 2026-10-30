@@ -94,6 +94,9 @@ Cloudflare Workers Builds can override the configured name with the connected da
 
 A GitHub Actions deployment workflow now tests and deploys the configured `dlsta` Worker using repository secrets for the Cloudflare API token and account ID. This is distinct from Cloudflare Workers Builds and from the separate GitHub Pages static-site workflow. The actual Cloudflare deployment requires user-supplied credentials and must be verified from the GitHub Actions logs.
 
+
+Lookup failures now produce a sanitized stage/status diagnostic in Worker logs to help distinguish regional upstream failures. It contains no post URLs, tokens, cookies, captions, response bodies or media links. A real failure from the affected Cloudflare region is still needed to determine its cause.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -220,7 +223,10 @@ export default {
         try { raw = JSON.parse(new TextDecoder().decode(bytes))?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
       } else return json(request, env, 405, {success: false, error: 'Method not allowed.'});
       normalizeInstagramUrl(raw);
-      const result = await scrapeInstagram(raw, {oembedToken: env.INSTAGRAM_OEMBED_TOKEN});
+      const result = await scrapeInstagram(raw, {
+        oembedToken: env.INSTAGRAM_OEMBED_TOKEN,
+        onDiagnostic: stages => console.warn('Instagram lookup failed:', JSON.stringify(stages))
+      });
       return json(request, env, 200, {success: true, ...result});
     } catch (error) {
       if (error.message === 'INVALID_URL') return json(request, env, 400, {success: false, error: 'Enter a valid public Instagram post or reel URL.'});
@@ -300,6 +306,9 @@ async function upstream(url, accept = 'text/html') {
 export async function scrapeInstagram(raw, options = {}) {
   const url = normalizeInstagramUrl(raw);
   let thumbnailUrl = '', caption = '', saw404 = false;
+  // Only fixed stage names, HTTP statuses and categories; never log URLs, tokens or content.
+  const diagnostic = {};
+  const failureKind = error => error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'request_or_parse_error';
   // Official oEmbed is not GraphQL and generally requires an app access token;
   // it normally returns embed metadata, not a direct video URL.
   if (options.oembedToken) {
@@ -308,17 +317,19 @@ export async function scrapeInstagram(raw, options = {}) {
       endpoint.searchParams.set('url', url);
       endpoint.searchParams.set('access_token', options.oembedToken);
       const result = await upstream(endpoint.toString(), 'application/json');
+      diagnostic.oembed = result.status;
       if (result.status === 200) {
         const data = JSON.parse(result.body);
         thumbnailUrl = validMediaUrl(data.thumbnail_url) ? data.thumbnail_url : '';
         caption = typeof data.title === 'string' ? data.title.slice(0, 2000) : '';
         if (validMediaUrl(data.video_url)) return {mediaType: 'video', mediaUrl: data.video_url, videoUrl: data.video_url, thumbnailUrl, caption};
       }
-    } catch { /* fall through to public HTML */ }
+    } catch (error) { diagnostic.oembed = failureKind(error); }
   }
-  for (const candidate of [url + 'embed/captioned/', url]) {
+  for (const [stage, candidate] of [['embed', url + 'embed/captioned/'], ['page', url]]) {
     try {
       const result = await upstream(candidate);
+      diagnostic[stage] = result.status;
       if (result.status === 404) { saw404 = true; continue; }
       if (result.status !== 200) continue;
       const html = result.body;
@@ -327,27 +338,32 @@ export async function scrapeInstagram(raw, options = {}) {
       if (validMediaUrl(image)) thumbnailUrl = image;
       caption ||= (meta(html, 'og:description') || '').slice(0, 2000);
       if (validMediaUrl(videoUrl)) return {mediaType: 'video', mediaUrl: videoUrl, videoUrl, thumbnailUrl, caption};
-    } catch { /* try next representation */ }
+    } catch (error) { diagnostic[stage] = failureKind(error); }
   }
   // Unauthenticated web GraphQL is an additional fallback, not oEmbed. Its
   // undocumented doc ID can change; only fresh anonymous CSRF cookies are used (no login).
+  let currentStage = 'home';
   try {
     const shortcode = url.split('/')[4];
     const home = await fetch("https://www.instagram.com/", {redirect:"manual", signal:AbortSignal.timeout(3000), headers:{"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}});
+    diagnostic.home = home.status;
     const homeText = await readUpstreamText(home);
     const csrf = home.headers.get("set-cookie")?.match(/csrftoken=([^;,\s]+)/)?.[1] || homeText.match(/"csrf_token":"([^"]+)"/)?.[1] || crypto.randomUUID().replaceAll("-", "");
     const body = new URLSearchParams({
       variables: JSON.stringify({shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null, __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false}),
       doc_id: options.docId || '27128499623469141', lsd: 'AVqbxe3J_YA', fb_api_req_friendly_name: 'PolarisPostRootQuery', av:'0', __d:'www', __user:'0', __a:'1', __req:'3', __hs:'20000.HYP:instagram_web_pkg.2.1..0.0', dpr:'1', __ccg:'UNKNOWN', __comet_req:'7', jazoest:'2957', __spin_r:'1000000000', __spin_b:'trunk', fb_api_caller_class:'RelayModern', server_timestamps:'true'
     });
+    currentStage = 'graphql';
     const response = await fetch('https://www.instagram.com/graphql/query', {
       method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(4500),
       headers: {'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'content-type':'application/x-www-form-urlencoded', 'x-ig-app-id':'936619743392459', 'x-fb-lsd':'AVqbxe3J_YA', 'x-fb-friendly-name':'PolarisPostRootQuery', 'x-requested-with':'XMLHttpRequest', 'accept':'*/*', 'accept-language':'en-US,en;q=0.9', 'sec-fetch-site':'same-origin', 'sec-fetch-mode':'cors', 'sec-fetch-dest':'empty', 'x-asbd-id':'129477', 'x-csrftoken':csrf, 'cookie':`csrftoken=${csrf}; ig_did=${crypto.randomUUID()}; mid=${crypto.randomUUID().replaceAll('-', '')}`, 'origin':'https://www.instagram.com', 'referer':'https://www.instagram.com/'}, body: body.toString()
     });
+    diagnostic.graphql = response.status;
     if (response.ok) {
       const data = JSON.parse(await readUpstreamText(response));
       const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
       // Return the first carousel item only; never mistake a video's cover for a photo.
+      diagnostic.media = root ? 'no_supported_media' : 'no_item';
       const item = root?.carousel_media?.[0] || root?.edge_sidecar_to_children?.edges?.[0]?.node || root;
       const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
       const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
@@ -358,7 +374,9 @@ export async function scrapeInstagram(raw, options = {}) {
       const isPhoto = item?.media_type === 1 || item?.is_video === false || item?.__typename === 'GraphImage';
       if (isPhoto && validMediaUrl(image)) return {mediaType: 'photo', mediaUrl: image, photoUrl: image, thumbnailUrl: image, caption};
     }
-  } catch { /* upstream changed or is unavailable */ }
+  } catch (error) { diagnostic[`${currentStage}Error`] = failureKind(error); }
+  // Emit only the sanitized stages when the entire lookup fails.
+  try { options.onDiagnostic?.(diagnostic); } catch { /* diagnostics must not change the response */ }
   // A 404 can be a misleading login/anti-bot response: do not claim deletion.
   throw new Error(saw404 ? 'UNAVAILABLE' : 'UPSTREAM');
 }
@@ -881,6 +899,10 @@ For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the c
 - Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
 
 The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
+
+## Troubleshooting lookup failures
+
+Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 
 ## Cloudflare Free plan usage
 
