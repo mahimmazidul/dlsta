@@ -22,12 +22,13 @@ async function rateLimit(request, env) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
   const hash = [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('');
   const prefix = `${Math.floor(Date.now() / 60000)}:${hash}:`;
-  const entries = await env.RATE_LIMIT.list({ prefix, limit: LIMIT });
-  if (entries.keys.length >= LIMIT) return false;
-  // Unique keys avoid KV's one-write-per-second-per-key limit. KV is eventually
-  // consistent and the list/put sequence is not atomic: this is best effort.
-  await env.RATE_LIMIT.put(prefix + crypto.randomUUID(), '1', {expirationTtl: 120});
-  return true;
+  try {
+    const entries = await env.RATE_LIMIT.list({ prefix, limit: LIMIT });
+    if (entries.keys.length >= LIMIT) return false;
+    // Unique keys avoid KV's one-write-per-second-per-key limit. This remains approximate.
+    await env.RATE_LIMIT.put(prefix + crypto.randomUUID(), '1', {expirationTtl: 120});
+    return true;
+  } catch { throw new Error('LIMIT_UNAVAILABLE'); }
 }
 export default {
   async fetch(request, env) {
@@ -41,9 +42,20 @@ export default {
       if (request.method === 'GET') raw = new URL(request.url).searchParams.get('url');
       else if (request.method === 'POST') {
         if (Number(request.headers.get('content-length')) > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
-        const text = await request.text();
-        if (text.length > 4096) return json(request, env, 413, {success: false, error: 'Request too large.'});
-        try { raw = JSON.parse(text)?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
+        const reader = request.body?.getReader();
+        const chunks = []; let size = 0;
+        if (reader) {
+          while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > 4096) { await reader.cancel(); return json(request, env, 413, {success: false, error: 'Request too large.'}); }
+            chunks.push(value);
+          }
+        }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        try { raw = JSON.parse(new TextDecoder().decode(bytes))?.url; } catch { return json(request, env, 400, {success: false, error: 'Invalid JSON.'}); }
       } else return json(request, env, 405, {success: false, error: 'Method not allowed.'});
       normalizeInstagramUrl(raw);
       const result = await scrapeInstagram(raw, {oembedToken: env.INSTAGRAM_OEMBED_TOKEN});
