@@ -26,7 +26,7 @@ test('html scraping returns direct CDN links and the proxy endpoint is removed',
   const original=globalThis.fetch;
   try {
     globalThis.fetch=async () => new Response('<meta property="og:video" content="https://a.fbcdn.net/v.mp4"><meta name="og:description" content="Hello &amp; bye">',{status:200});
-    assert.deepEqual(await scrapeInstagram('https://instagram.com/reel/abc/'), {videoUrl:'https://a.fbcdn.net/v.mp4', thumbnailUrl:'', caption:'Hello & bye'});
+    assert.deepEqual(await scrapeInstagram('https://instagram.com/reel/abc/'), {mediaType:'video', mediaUrl:'https://a.fbcdn.net/v.mp4', videoUrl:'https://a.fbcdn.net/v.mp4', thumbnailUrl:'', caption:'Hello & bye'});
     const response = await worker.fetch(req('https://instagram.com/reel/abc/'),env());
     const payload = await response.json();
     assert.equal(payload.success,true);
@@ -34,4 +34,27 @@ test('html scraping returns direct CDN links and the proxy endpoint is removed',
     const removed = await worker.fetch(new Request('https://app.example/api/proxy?url=https%3A%2F%2Fa.fbcdn.net%2Fa'),env());
     assert.equal(removed.status,404);
   } finally {globalThis.fetch=original;}
+});
+
+test('photo extraction returns the first actual photo, not a video cover', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async (target) => {
+      if (String(target).includes('/graphql/query')) return new Response(JSON.stringify({data:{xdt_api__v1__media__shortcode__web_info:{items:[{media_type: 1, image_versions2:{candidates:[{url:'https://x.fbcdn.net/photo.jpg'}]}, caption:{text:'Photo caption'}}]}}}));
+      return new Response('<html></html>');
+    };
+    const result = await scrapeInstagram('https://instagram.com/p/abc/');
+    assert.deepEqual(result, {mediaType:'photo', mediaUrl:'https://x.fbcdn.net/photo.jpg', photoUrl:'https://x.fbcdn.net/photo.jpg', thumbnailUrl:'https://x.fbcdn.net/photo.jpg', caption:'Photo caption'});
+    globalThis.fetch = async (target) => String(target).includes('/graphql/query')
+      ? new Response(JSON.stringify({data:{xdt_api__v1__media__shortcode__web_info:{items:[{media_type:2,image_versions2:{candidates:[{url:'https://x.fbcdn.net/cover.jpg'}]}}]}}}))
+      : new Response('<html></html>');
+    await assert.rejects(scrapeInstagram('https://instagram.com/p/abc/'), /UPSTREAM/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('unavailable KV returns 503 and oversized request body returns 413', async () => {
+  const broken = {RATE_LIMIT:{list: async () => {throw new Error('KV unavailable');}}};
+  assert.equal((await worker.fetch(req('https://instagram.com/p/abc/'), broken)).status, 503);
+  const huge = new Request('https://app.example/api/scrape', {method:'POST', body:'x'.repeat(5000)});
+  assert.equal((await worker.fetch(huge, env())).status, 413);
 });
