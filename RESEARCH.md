@@ -82,9 +82,12 @@ The current version adds direct links for public photos as well as videos. A NAS
 
 Responsive layouts were checked in headless Chromium at widths 320, 375, 700, 768, 1024 and 1440 px, including long captions and the result panel. The mobile footer was centered and the paste handler was exercised. The audit also added bounded request/upstream reads and a 503 response when KV fails. `insta-dl` remains the Cloudflare Worker service name for compatibility while the public app and package are named `dlsta`. See the README for one-click deployment instructions and the KV consistency limitations.
 
+
+A subsequent SEO and branding update introduced the project icon, social preview, canonical URL, sitemap, crawler guidance, and structured data. The default canonical site is the owner's GitHub Pages subdirectory; forks and other primary domains must update the absolute URLs as described in the README. GitHub Pages still requires a configured Worker URL for lookups.
+
 # Phase 4 — Full code
 
-The repository also contains tests, npm lockfile, raw results and the Apache license.
+The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
 
 ## `worker/index.js`
 
@@ -104,6 +107,7 @@ function json(request, env, status, payload, extra = {}) {
   const headers = cors(request, env);
   headers.set('Content-Type', 'application/json; charset=utf-8');
   headers.set('Cache-Control', 'no-store');
+  headers.set('X-Robots-Tag', 'noindex, nofollow');
   for (const [k, v] of Object.entries(extra)) headers.set(k, v);
   return new Response(JSON.stringify(payload), { status, headers });
 }
@@ -303,8 +307,34 @@ export async function scrapeInstagram(raw, options = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Find direct links for public Instagram photos, reels and videos with dlsta.">
-  <title>dlsta — Save the moments worth keeping</title>
+  <title>dlsta — Instagram Photo, Reel &amp; Video Downloader</title>
+  <meta name="description" content="Find direct links to public Instagram photos, Reels and videos with dlsta. No Instagram login required; save media from its original CDN.">
+  <meta name="author" content="Md. Mazidul Islam Mahim">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#10120f">
+  <link rel="canonical" href="https://mahimmazidul.github.io/dlsta/">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96.png">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="dlsta">
+  <meta property="og:title" content="dlsta — Instagram Photo, Reel &amp; Video Downloader">
+  <meta property="og:description" content="Get direct links to public Instagram photos, Reels and videos. No Instagram login required.">
+  <meta property="og:url" content="https://mahimmazidul.github.io/dlsta/">
+  <meta property="og:image" content="https://mahimmazidul.github.io/dlsta/images/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="dlsta: keep the moments worth saving, with direct links for public Instagram photos, Reels and videos.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="dlsta — Instagram Photo, Reel &amp; Video Downloader">
+  <meta name="twitter:description" content="Get direct links to public Instagram photos, Reels and videos. No Instagram login required.">
+  <meta name="twitter:image" content="https://mahimmazidul.github.io/dlsta/images/social-card.png">
+  <meta name="twitter:image:alt" content="dlsta: direct links for public Instagram photos, Reels and videos.">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"dlsta","url":"https://mahimmazidul.github.io/dlsta/","description":"Find direct links to public Instagram photos, Reels and videos without an Instagram login.","applicationCategory":"MultimediaApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","image":"https://mahimmazidul.github.io/dlsta/images/social-card.png","author":{"@type":"Person","name":"Md. Mazidul Islam Mahim","url":"https://github.com/mahimmazidul"}}
+  </script>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
@@ -323,7 +353,7 @@ export async function scrapeInstagram(raw, options = {}) {
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="eyebrow"><span class="sparkle" aria-hidden="true">✳</span> YOUR LITTLE CORNER OF THE INTERNET</div>
         <h1 id="hero-title">Good moments<br><em>are worth keeping.</em></h1>
-        <p class="hero-copy">Found something you love? Get a direct link to a public Instagram photo or video in just a few clicks.</p>
+        <p class="hero-copy">dlsta helps you find direct links to public Instagram photos, Reels and videos in just a few clicks.</p>
 
         <div class="tool-card">
           <div class="tool-top"><div><span class="tool-label">THE MEDIA TOOL</span><h2>Let’s find your media.</h2></div><span class="step-indicator">01 / 01</span></div>
@@ -368,6 +398,21 @@ export async function scrapeInstagram(raw, options = {}) {
           </div>
         </div>
       </section>
+      <section class="about-section" aria-labelledby="about-title">
+        <div class="wrap about-grid">
+          <div class="about-copy">
+            <div class="eyebrow">GOOD TO KNOW</div>
+            <h2 id="about-title">A simpler way to save<br><em>public Instagram media.</em></h2>
+            <p>dlsta helps you find a direct link to a public Instagram photo, Reel or video. The file comes from Instagram’s CDN—not through our server—and you don’t need to sign in to Instagram.</p>
+            <p>Only save content you have permission to use. dlsta is an independent project and isn’t affiliated with Instagram or Meta.</p>
+          </div>
+          <div class="faq" aria-label="Frequently asked questions">
+            <details><summary>Can I save Instagram photos and Reels?</summary><p>dlsta supports public photo posts, Reels and videos when Instagram makes the media available. For a carousel, it returns one item rather than the whole album.</p></details>
+            <details><summary>Why won’t a link work?</summary><p>Private, deleted, restricted or temporarily blocked posts can’t be resolved. Instagram can also change how public media is served. Direct links can expire, so try finding the post again.</p></details>
+            <details><summary>How do I save the media?</summary><p>Open or copy the direct link. If your browser displays the photo or plays the video, use its save or download option. The file is served by Instagram’s CDN.</p></details>
+          </div>
+        </div>
+      </section>
     </main>
     <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta. · <a href="https://github.com/mahimmazidul/dlsta/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache 2.0 license ↗</a></p></div></footer>
   </div>
@@ -386,6 +431,8 @@ export async function scrapeInstagram(raw, options = {}) {
 
 /* Center the stacked footer on phones. */
 @media(max-width:700px){.footer{align-items:center;text-align:center}.footer-right{text-align:center}.footer-brand .brand{justify-content:center}}
+/* Useful, readable content for visitors and search engines. */
+.about-section{border-top:1px solid #2c3228;padding:82px 0 88px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{font-size:clamp(29px,3.6vw,41px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 21px}.about-copy h2 em{font-style:normal;color:var(--accent)}.about-copy p,.faq p{color:#9ba595;font-size:13px;line-height:1.75;margin:0 0 14px}.faq details{border-bottom:1px solid #343b30}.faq details:first-child{border-top:1px solid #343b30}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 28px 20px 0;font-size:13px;font-weight:650;line-height:1.5;color:#e9eee3}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px;font-weight:400}.faq details[open] summary::after{content:'−'}.faq p{padding-right:20px}.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:700px){.about-section{padding:60px 0}.about-grid{grid-template-columns:1fr;gap:25px}.about-copy h2{font-size:31px}}
 
 ````
 
@@ -481,6 +528,58 @@ document.addEventListener('paste', (event) => {
     urlInput.focus();
   } catch { /* unrelated text is left alone */ }
 });
+
+````
+
+## `public/icon.svg`
+
+````xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="0" y="0" width="512" height="512" rx="155" fill="#d8efab"/>
+  <path d="M158 155 L349 346 M349 216 V346 H219" fill="none" stroke="#182014" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+````
+
+## `public/site.webmanifest`
+
+````json
+{
+  "name": "dlsta — Instagram Photo, Reel & Video Downloader",
+  "short_name": "dlsta",
+  "description": "Find direct links to public Instagram photos, Reels and videos.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "browser",
+  "background_color": "#10120f",
+  "theme_color": "#10120f",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
+
+````
+
+## `public/sitemap.xml`
+
+````xml
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://mahimmazidul.github.io/dlsta/</loc>
+  </url>
+</urlset>
+
+````
+
+## `public/robots.txt`
+
+````text
+User-agent: *
+Allow: /
+Disallow: /api/
+Sitemap: https://mahimmazidul.github.io/dlsta/sitemap.xml
 
 ````
 
@@ -646,6 +745,17 @@ The rate limiter targets **10 API requests per IP per fixed minute**, storing sh
 Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
 
 Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
+
+## Search visibility and branding
+
+The default canonical address, social previews, structured data and sitemap use `https://mahimmazidul.github.io/dlsta/`. The existing dlsta mark is provided as an SVG, PNG favicons, an Apple touch icon and web manifest icons; `public/images/social-card.png` is the 1200×630 social preview. API responses send `X-Robots-Tag: noindex, nofollow`.
+
+Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as described above; otherwise the page loads but media lookups cannot work. Search metadata cannot replace a working backend.
+
+1. Deploy the site, then add the URL-prefix property `https://mahimmazidul.github.io/dlsta/` to [Google Search Console](https://search.google.com/search-console/). Verify ownership using an available method, such as adding the supplied HTML verification file to `public/` and redeploying.
+2. Submit `https://mahimmazidul.github.io/dlsta/sitemap.xml` in Search Console and optionally request indexing of the homepage with URL Inspection. Crawling and indexing are not guaranteed and may take time.
+3. The site is in a GitHub Pages **subdirectory**. Search crawlers read `robots.txt` at the **hostname root**, not `dlsta/robots.txt`; the included file applies when the site is hosted at a domain root, such as a Worker/custom domain. Submit the sitemap directly for the GitHub Pages subdirectory. Google generally chooses one search favicon per hostname, so it may not display this project's icon independently for a subdirectory.
+4. If deploying a fork or a different canonical domain, replace the absolute canonical, Open Graph, Twitter and JSON-LD URLs in `public/index.html`, the `<loc>` in `public/sitemap.xml`, and the sitemap URL in `public/robots.txt`. Update the SEO test's canonical URL to match. A duplicate Worker deployment currently points search engines at the GitHub Pages URL intentionally; change these values if the Worker/custom domain should be the primary site.
 
 ## License and credit
 
