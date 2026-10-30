@@ -46,3 +46,64 @@ async function upstream(url, accept = 'text/html') {
   return {status: response.status, body};
 }
 
+export async function scrapeInstagram(raw, options = {}) {
+  const url = normalizeInstagramUrl(raw);
+  let thumbnailUrl = '', caption = '', saw404 = false;
+  // Official oEmbed is not GraphQL and generally requires an app access token;
+  // it normally returns embed metadata, not a direct video URL.
+  if (options.oembedToken) {
+    try {
+      const endpoint = new URL('https://graph.facebook.com/v24.0/instagram_oembed');
+      endpoint.searchParams.set('url', url);
+      endpoint.searchParams.set('access_token', options.oembedToken);
+      const result = await upstream(endpoint.toString(), 'application/json');
+      if (result.status === 200) {
+        const data = JSON.parse(result.body);
+        thumbnailUrl = validMediaUrl(data.thumbnail_url) ? data.thumbnail_url : '';
+        caption = typeof data.title === 'string' ? data.title.slice(0, 2000) : '';
+        if (validMediaUrl(data.video_url)) return {videoUrl: data.video_url, thumbnailUrl, caption};
+      }
+    } catch { /* fall through to public HTML */ }
+  }
+  for (const candidate of [url + 'embed/captioned/', url]) {
+    try {
+      const result = await upstream(candidate);
+      if (result.status === 404) { saw404 = true; continue; }
+      if (result.status !== 200) continue;
+      const html = result.body;
+      const videoUrl = meta(html, 'og:video:secure_url') || meta(html, 'og:video') || field(html, 'video_url');
+      const image = meta(html, 'og:image') || field(html, 'display_url');
+      if (validMediaUrl(image)) thumbnailUrl = image;
+      caption ||= (meta(html, 'og:description') || '').slice(0, 2000);
+      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+    } catch { /* try next representation */ }
+  }
+  // Unauthenticated web GraphQL is an additional fallback, not oEmbed. Its
+  // undocumented doc ID can change; only fresh anonymous CSRF cookies are used (no login).
+  try {
+    const shortcode = url.split('/')[4];
+    const home = await fetch("https://www.instagram.com/", {redirect:"manual", signal:AbortSignal.timeout(3000), headers:{"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}});
+    const homeText = await home.text();
+    const csrf = home.headers.get("set-cookie")?.match(/csrftoken=([^;,\s]+)/)?.[1] || homeText.match(/"csrf_token":"([^"]+)"/)?.[1] || crypto.randomUUID().replaceAll("-", "");
+    const body = new URLSearchParams({
+      variables: JSON.stringify({shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null, __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false}),
+      doc_id: options.docId || '27128499623469141', lsd: 'AVqbxe3J_YA', fb_api_req_friendly_name: 'PolarisPostRootQuery', av:'0', __d:'www', __user:'0', __a:'1', __req:'3', __hs:'20000.HYP:instagram_web_pkg.2.1..0.0', dpr:'1', __ccg:'UNKNOWN', __comet_req:'7', jazoest:'2957', __spin_r:'1000000000', __spin_b:'trunk', fb_api_caller_class:'RelayModern', server_timestamps:'true'
+    });
+    const response = await fetch('https://www.instagram.com/graphql/query', {
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(4500),
+      headers: {'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'content-type':'application/x-www-form-urlencoded', 'x-ig-app-id':'936619743392459', 'x-fb-lsd':'AVqbxe3J_YA', 'x-fb-friendly-name':'PolarisPostRootQuery', 'x-requested-with':'XMLHttpRequest', 'accept':'*/*', 'accept-language':'en-US,en;q=0.9', 'sec-fetch-site':'same-origin', 'sec-fetch-mode':'cors', 'sec-fetch-dest':'empty', 'x-asbd-id':'129477', 'x-csrftoken':csrf, 'cookie':`csrftoken=${csrf}; ig_did=${crypto.randomUUID()}; mid=${crypto.randomUUID().replaceAll('-', '')}`, 'origin':'https://www.instagram.com', 'referer':'https://www.instagram.com/'}, body: body.toString()
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const root = data?.data?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || data?.data?.xdt_shortcode_media;
+      const item = root?.carousel_media?.find(x => x.video_versions?.length) || root;
+      const videoUrl = item?.video_versions?.find(x => validMediaUrl(x.url))?.url || item?.video_url;
+      const image = item?.image_versions2?.candidates?.find(x => validMediaUrl(x.url))?.url || item?.display_url;
+      if (validMediaUrl(image)) thumbnailUrl = image;
+      caption = (root?.caption?.text || root?.edge_media_to_caption?.edges?.[0]?.node?.text || caption).slice(0, 2000);
+      if (validMediaUrl(videoUrl)) return {videoUrl, thumbnailUrl, caption};
+    }
+  } catch { /* upstream changed or is unavailable */ }
+  // A 404 can be a misleading login/anti-bot response: do not claim deletion.
+  throw new Error(saw404 ? 'UNAVAILABLE' : 'UPSTREAM');
+}
