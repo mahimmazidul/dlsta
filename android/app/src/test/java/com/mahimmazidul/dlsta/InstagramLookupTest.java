@@ -45,6 +45,17 @@ public class InstagramLookupTest {
         List<String> requests=new ArrayList<>();InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/reel/ABC/",(url,method,body)->{requests.add(url);if(url.equals(InstagramLookup.BACKEND)){assertEquals("POST",method);assertEquals("https://www.instagram.com/reel/ABC/",new JSONObject(body).getString("url"));return "{\"success\":true,\"mediaType\":\"video\",\"mediaUrl\":\"https://video.cdninstagram.com/a.mp4\"}";}return "<html>no media</html>";});
         assertEquals("fallback",r.source);assertEquals(4,requests.size());assertEquals(InstagramLookup.BACKEND,requests.get(3));
     }
+    @Test public void blockedCustomDomainUsesSameWorkerBackup() throws Exception {
+        List<String> requests=new ArrayList<>();InstagramLookup.Result r=InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body)->{
+            requests.add(url);if(url.equals(InstagramLookup.BACKEND))throw new InstagramLookup.HttpFailure(403);
+            if(url.equals(InstagramLookup.BACKUP_BACKEND))return "{\"success\":true,\"mediaType\":\"photo\",\"mediaUrl\":\"https://media.fbcdn.net/a.jpg\"}";
+            return "<html>no media</html>";});
+        assertEquals("fallback",r.source);assertEquals(InstagramLookup.BACKUP_BACKEND,requests.get(requests.size()-1));
+    }
+    @Test public void workerRateLimitIsNotBypassed() throws Exception {
+        List<String> requests=new ArrayList<>();try {InstagramLookup.lookup("https://instagram.com/p/ABC/",(url,method,body)->{requests.add(url);if(url.equals(InstagramLookup.BACKEND))throw new InstagramLookup.HttpFailure(429);return "no media";});fail("Lookup should fail");} catch(Exception expected){}
+        assertFalse(requests.contains(InstagramLookup.BACKUP_BACKEND));
+    }
     @Test public void fallbackNeverAcceptsUntrustedMediaHosts() throws Exception {
         JSONObject result=new JSONObject("{\"success\":true,\"mediaType\":\"photo\",\"mediaUrl\":\"https://fbcdn.net.evil.example/a.jpg\"}");assertNull(InstagramLookup.parseBackend(result));
     }

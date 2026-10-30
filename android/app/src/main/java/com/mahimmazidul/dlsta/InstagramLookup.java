@@ -20,6 +20,8 @@ import java.util.regex.Pattern;
 /** Public, anonymous lookup on the device first. The existing backend is the fallback. */
 final class InstagramLookup {
     static final String BACKEND = "https://d.byaislop.cv/api/scrape";
+    static final String BACKUP_BACKEND = "https://dlsta.byaislop.workers.dev/api/scrape";
+    static final class HttpFailure extends Exception { final int status; HttpFailure(int status) { this.status=status; } }
     static final int MAX_BODY = 3_000_000;
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36";
     interface Transport { String request(String url, String method, String body) throws Exception; }
@@ -53,8 +55,11 @@ final class InstagramLookup {
             try { Result result=parsePublic(transport.request(candidate,"GET",null),shortcode); if (result!=null) return result; } catch (Exception ignored) { }
         }
         try {
-            JSONObject data=new JSONObject(transport.request(BACKEND,"POST",new JSONObject().put("url",url).toString()));
-            if (!data.optBoolean("success")) throw new Exception();
+            String body=new JSONObject().put("url",url).toString(); String response;
+            try { response=transport.request(BACKEND,"POST",body); }
+            catch(HttpFailure error) { if(error.status!=403)throw error; response=transport.request(BACKUP_BACKEND,"POST",body); }
+            catch(java.io.IOException error) { response=transport.request(BACKUP_BACKEND,"POST",body); }
+            JSONObject data=new JSONObject(response); if (!data.optBoolean("success")) throw new Exception();
             Result result=parseBackend(data); if (result!=null) return result;
         } catch (Exception ignored) { }
         throw new Exception("Could not retrieve this post. It may be private, deleted, restricted or temporarily unavailable.");
@@ -65,7 +70,8 @@ final class InstagramLookup {
             c.setConnectTimeout(4500); c.setReadTimeout(6500); c.setInstanceFollowRedirects(false); c.setRequestMethod(method);
             c.setRequestProperty("User-Agent",USER_AGENT); c.setRequestProperty("Accept",method.equals("POST")?"application/json":"text/html");
             if (body!=null) { c.setDoOutput(true); c.setRequestProperty("Content-Type","application/json"); try(OutputStream out=c.getOutputStream()){ out.write(body.getBytes(StandardCharsets.UTF_8)); } }
-            if (c.getResponseCode()!=200 || c.getContentLengthLong()>MAX_BODY) throw new Exception("Request failed");
+            int status=c.getResponseCode(); if(status!=200)throw new HttpFailure(status);
+            if(c.getContentLengthLong()>MAX_BODY)throw new Exception("Response too large");
             try (InputStream in=c.getInputStream(); ByteArrayOutputStream out=new ByteArrayOutputStream()) {
                 byte[] bytes=new byte[8192]; int n, total=0; while((n=in.read(bytes))!=-1){total+=n;if(total>MAX_BODY)throw new Exception("Response too large");out.write(bytes,0,n);} return out.toString("UTF-8");
             }
