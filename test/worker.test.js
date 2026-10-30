@@ -17,6 +17,7 @@ test('CDN validation rejects lookalikes, credentials, ports', () => {
 test('bad input, rate limit, and missing KV do not expose details', async () => {
   const e = env();
   let r = await worker.fetch(req('https://youtube.com/watch?v=test'),e); assert.equal(r.status,400);
+  assert.equal(r.headers.get('X-Robots-Tag'), 'noindex, nofollow');
   for(let i=0;i<9;i++) await worker.fetch(req(''),e);
   r=await worker.fetch(req(''),e); assert.equal(r.status,429);
   r=await worker.fetch(req(''),{}); assert.equal(r.status,503);
