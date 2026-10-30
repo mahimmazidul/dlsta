@@ -395,7 +395,7 @@ jobs:
 ## `README.md`
 
 ````markdown
-# Insta DL
+# DLSTA — Insta DL: Instagram Reels & Video Downloader
 
 A small Cloudflare Worker + static UI for resolving **public** Instagram videos. The resolver uses official oEmbed only if an app token is configured, then public HTML, then unauthenticated Instagram web GraphQL with an ephemeral anonymous CSRF cookie. No Instagram account login, paid APIs, subprocesses, or Node APIs are used by the Worker.
 
@@ -405,7 +405,7 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram videos.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mahimmazidul/dlsta)
 
-The button works **after this code is pushed** to the repository. The deployment flow may prompt for Cloudflare account and KV provisioning. If it cannot provision the namespace, use the manual steps below.
+The deployment flow may prompt for Cloudflare account and KV provisioning. If it cannot provision the namespace, use the manual steps below.
 
 Manual deployment (Node.js 22+):
 
@@ -431,6 +431,12 @@ For Cloudflare Pages or GitHub Pages, publish the contents of `public/` as the s
 - Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
 
 The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
+
+## Cloudflare Free plan usage
+
+Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows. A successful find-and-download flow normally makes two API requests, so in ideal conditions the KV quotas allow roughly **500 complete downloads per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
+
+Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static asset requests served directly by Workers are free and unlimited; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
 
 ## Verification
 
