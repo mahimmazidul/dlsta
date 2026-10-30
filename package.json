@@ -8,7 +8,7 @@
     "name": "Md. Mazidul Islam Mahim",
     "url": "https://github.com/mahimmazidul"
   },
-  "homepage": "https://github.com/mahimmazidul/dlsta#readme",
+  "homepage": "https://d.byaislop.cv/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mahimmazidul/dlsta.git"
@@ -20,7 +20,12 @@
     "instagram",
     "instagram-downloader",
     "instagram-reels",
+    "instagram-reels-downloader",
     "instagram-photos",
+    "instagram-photo-downloader",
+    "instagram-video-downloader",
+    "instagram-carousel",
+    "media-downloader",
     "video-downloader",
     "cloudflare-workers",
     "javascript"
