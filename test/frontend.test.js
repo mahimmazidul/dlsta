@@ -8,6 +8,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const elements = {};
   for (const id of ['form', 'message', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
+      attributes: {}, setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
   }
   elements.url.value = 'https://www.instagram.com/reel/example/';
@@ -135,4 +136,13 @@ test('the flat interface has no horizontal divider borders and retains keyboard 
   const css = await readFile(new URL('../public/style.css', import.meta.url), 'utf8');
   assert.doesNotMatch(css, /border-(?:top|bottom)\s*:/);
   assert.match(css, /input:focus-visible/);
+});
+
+
+test('successful lookup clears the loading announcement and busy state', async () => {
+  const {elements} = await setup();
+  await elements.form.events.submit({preventDefault() {}});
+  assert.equal(elements.form.attributes['aria-busy'], 'false');
+  assert.equal(elements.message.textContent, '');
+  assert.equal(elements.result.hidden, false);
 });

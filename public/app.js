@@ -34,6 +34,9 @@ form.addEventListener('submit', async (event) => {
   message.textContent = '';
   message.dataset.kind = '';
   submit.disabled = true;
+  form.setAttribute('aria-busy', 'true');
+  message.textContent = 'Finding your media…';
+  message.dataset.kind = 'loading';
   submit.firstElementChild.textContent = 'Finding your media…';
   try {
     if (!urlInput.value.trim()) {
@@ -102,8 +105,10 @@ form.addEventListener('submit', async (event) => {
     selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
-  } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
-  finally { submit.disabled = false; updateSubmitLabel(); }
+    message.textContent = '';
+    message.dataset.kind = '';
+  } catch (error) { message.dataset.kind = ''; message.textContent = error.message || 'Something went wrong. Please try again.'; }
+  finally { submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
 });
 
 copy.addEventListener('click', async () => {
