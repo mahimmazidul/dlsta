@@ -1,3 +1,72 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>Insta DL — Save public videos</title><link rel="stylesheet" href="style.css"><script src="app.js" defer></script></head>
-<body><main><header><div class="brand"><span class="logo">↓</span> INSTA DL</div><span class="badge">PUBLIC CONTENT ONLY</span></header><section class="hero"><div class="eyebrow"><span>✦</span> SIMPLE · PRIVATE · NO LOGIN</div><h1>Keep the moments<br><em>worth saving.</em></h1><p>Save public Instagram videos and reels in a few clicks. No account, no clutter—just the content you love.</p><form id="form"><label for="url">INSTAGRAM LINK</label><div class="input-wrap"><span aria-hidden="true">↗</span><input id="url" type="url" name="url" placeholder="https://www.instagram.com/reel/..." required><button id="submit" type="submit">Find video <span>→</span></button></div><small>Paste a link to a public post or reel.</small></form><div id="message" role="status" aria-live="polite"></div><article id="result" hidden><img id="thumbnail" alt="Video thumbnail" hidden><div><div class="eyebrow">YOUR VIDEO IS READY</div><p id="caption"></p><a id="download" class="download">Download video ↓</a></div></article></section><section class="steps"><div><b>01</b><h3>Copy the link</h3><p>Find a public reel or video on Instagram and copy its link.</p></div><div><b>02</b><h3>Paste it here</h3><p>Drop the link above and let us look for the video.</p></div><div><b>03</b><h3>Save your video</h3><p>Download it for personal use, with the creator’s permission.</p></div></section><footer><span>© INSTA DL</span><span>Not affiliated with Instagram or Meta.</span><span>Made for moments ✦</span></footer></main></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Find direct download links for public Instagram reels and videos with DLSTA.">
+  <title>DLSTA — Save the moments worth keeping</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="header wrap">
+      <a class="brand" href="./" aria-label="DLSTA home"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a>
+      <nav class="header-nav" aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="https://github.com/mahimmazidul/dlsta" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+      <span class="header-pill"><span class="status-dot"></span> FOR PUBLIC CONTENT</span>
+    </header>
+
+    <main>
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="eyebrow"><span class="sparkle" aria-hidden="true">✳</span> YOUR LITTLE CORNER OF THE INTERNET</div>
+        <h1 id="hero-title">Good moments<br><em>are worth keeping.</em></h1>
+        <p class="hero-copy">Found a reel you love? Get a direct link to a public Instagram video in just a few clicks.</p>
+
+        <div class="tool-card">
+          <div class="tool-top"><div><span class="tool-label">THE VIDEO TOOL</span><h2>Let’s find your video.</h2></div><span class="step-indicator">01 / 01</span></div>
+          <form id="form">
+            <label for="url">Instagram link</label>
+            <div class="input-row">
+              <span class="link-icon" aria-hidden="true">↗</span>
+              <input id="url" name="url" type="url" placeholder="Paste an Instagram reel or post link..." autocomplete="url" required>
+              <button id="submit" type="submit"><span>Get video link</span><span aria-hidden="true">↗</span></button>
+            </div>
+            <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
+          </form>
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+          <article id="result" class="result" hidden aria-label="Video result">
+            <div class="result-image" id="image-wrap" hidden><img id="thumbnail" alt="Preview of the Instagram video" referrerpolicy="no-referrer"></div>
+            <div class="result-body">
+              <span class="result-kicker"><span class="status-dot"></span> DIRECT LINK READY</span>
+              <h3>Your video is ready.</h3>
+              <p id="caption" class="caption"></p>
+              <div class="result-actions">
+                <a id="download" class="primary-action" target="_blank" rel="noopener noreferrer">Open video <span aria-hidden="true">↗</span></a>
+                <button id="copy" type="button" class="copy-action">Copy direct link</button>
+              </div>
+              <p class="download-note">The video opens directly from Instagram’s CDN. If it plays instead of downloading, use your browser’s save or download option. Links may expire.</p>
+            </div>
+          </article>
+        </div>
+        <div class="hero-footnote"><span class="footnote-line"></span> A LITTLE LESS SCROLLING, A LITTLE MORE KEEPING <span class="footnote-line"></span></div>
+      </section>
+
+      <section id="how-it-works" class="how-section">
+        <div class="wrap">
+          <div class="section-heading"><div><div class="eyebrow">THE SIMPLE STUFF</div><h2>Three steps. <em>That’s it.</em></h2></div><p>No accounts, no complicated setup.<br>Just a link and a little magic.</p></div>
+          <div class="steps">
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">⌁</span><span>01</span></div><h3>Copy the link</h3><p>Find a public Instagram reel or video and copy its link.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↗</span><span>02</span></div><h3>Paste it here</h3><p>Drop the link in the box above and let us find the video.</p></article>
+            <article><div class="step-top"><span class="step-icon" aria-hidden="true">↓</span><span>03</span></div><h3>Save your find</h3><p>Open the direct link and save it, with the creator’s permission.</p></article>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer wrap"><div class="footer-brand"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">↘</span><span>dlsta<span class="brand-dot">.</span></span></a><p>For the moments you want to keep.</p></div><div class="footer-right"><p>Built by <a href="https://github.com/mahimmazidul" target="_blank" rel="noopener noreferrer">Md. Mazidul Islam Mahim ↗</a></p><p>Not affiliated with Instagram or Meta.</p></div></footer>
+  </div>
+</body>
+</html>
