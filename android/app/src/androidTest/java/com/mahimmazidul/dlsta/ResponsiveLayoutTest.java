@@ -33,7 +33,11 @@ public class ResponsiveLayoutTest {
         try (ParcelFileDescriptor fd=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command);
              FileInputStream in=new FileInputStream(fd.getFileDescriptor())) { while(in.read()!=-1) { } }
     }
-    private void snapshot(String name) throws Exception { shell("screencap -p /sdcard/Download/"+name+".png"); }
+    private void snapshot(String name) throws Exception {
+        // waitForIdleSync covers the UI thread, not the system compositor or bar transition.
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync(); SystemClock.sleep(900);
+        shell("screencap -p /sdcard/Download/"+name+".png");
+    }
     private void fullyVisible(View v) {
         assertNotNull(v);Rect rect=new Rect();assertTrue("View should be visible",v.getGlobalVisibleRect(rect));
         assertEquals("Control must not be clipped horizontally",v.getWidth(),rect.width());
