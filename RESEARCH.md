@@ -91,6 +91,9 @@ The combined Worker configuration now defaults to the service name `dlsta` and g
 
 Cloudflare Workers Builds can override the configured name with the connected dashboard Worker name; changing the configuration does not rename the existing service. The source repository, any Deploy-button-created copy, and the deployed Cloudflare configuration should be checked separately.
 
+
+A GitHub Actions deployment workflow now tests and deploys the configured `dlsta` Worker using repository secrets for the Cloudflare API token and account ID. This is distinct from Cloudflare Workers Builds and from the separate GitHub Pages static-site workflow. The actual Cloudflare deployment requires user-supplied credentials and must be verified from the GitHub Actions logs.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -715,6 +718,58 @@ ALLOWED_ORIGINS = "*"
 
 ````
 
+## `.github/workflows/cloudflare.yml`
+
+````yaml
+name: Deploy dlsta to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-dlsta-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test and deploy dlsta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Check Cloudflare credentials are set
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo '::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as GitHub Actions repository secrets.'
+            exit 1
+          fi
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+````
+
 ## `.github/workflows/pages.yml`
 
 ````yaml
@@ -767,6 +822,18 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 - Runs as a single Cloudflare Worker with static assets, or with the frontend hosted separately on GitHub Pages or Cloudflare Pages.
 
 **Availability is not guaranteed.** Instagram can change or block these unofficial public endpoints, require login, remove videos, or return ambiguous responses. oEmbed generally returns embed metadata, not a downloadable video; it is not GraphQL and usually needs a Meta app access token. Public HTML often lacks direct media URLs. GraphQL document IDs can change. Private content is not supported. Only download material you have permission to use; follow the relevant platform terms and copyright laws.
+
+## Deploy with GitHub Actions (recommended)
+
+The workflow `.github/workflows/cloudflare.yml` tests and deploys the **dlsta Worker and its assets** on pushes to `main`, and can also be started manually. It uses the checked-in `wrangler.toml`; this is a Workers deployment, not a Pages deployment.
+
+1. In Cloudflare, create an **API token** using the **Edit Cloudflare Workers** template and scope it to the target account. For the first deployment the token needs permission to create the Worker and provision its `RATE_LIMIT` KV namespace; later, reduce the token permissions where possible. See [Cloudflare's token permission guidance](https://developers.cloudflare.com/workers/authorization/). Use an API token, **not** your global API key.
+2. Find your **Account ID** in Cloudflare's account dashboard (Workers & Pages overview or an account's zone overview). Use the account ID, not a zone ID.
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions → New repository secret**. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` with their respective values. Never commit or post the token.
+4. Open **Actions → Deploy dlsta to Cloudflare Workers → Run workflow**, select `main` and run it. Future pushes to `main` run it automatically. Open the run logs to confirm the deployment and its Worker URL. The workflow fails clearly if secrets are missing; adding secrets alone does not rerun a failed workflow.
+5. Verify the `dlsta` Worker has a `RATE_LIMIT` KV binding, open its URL, and test a public Instagram link. Attach a custom domain through the dashboard if desired. The combined site automatically uses its current host for API and SEO.
+
+The action deploys the name in `wrangler.toml` (`dlsta`), so an older `insta-dl` Worker is not automatically renamed or deleted. If you also have Cloudflare Workers Builds connected to the same Worker, disable one deployment pipeline to avoid competing deployments. Keep the separate GitHub Pages workflow only if you also want a static Pages frontend; it requires a configured Worker URL.
 
 ## Deploy using the Cloudflare button
 
