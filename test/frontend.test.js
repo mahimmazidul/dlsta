@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200, mediaType = 'image/webp', mediaFail = false, deferredMedia = false} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false, responseStatus = 200, mediaType = 'image/webp', mediaFail = false, deferredMedia = false, mediaHandler = null} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
-  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'save-media', 'download-status', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
+  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'save-media', 'save-all', 'download-status', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'preview-empty', 'preview-prev', 'preview-next', 'preview-counter', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
       style: {}, scrollHeight: 120, scrollLeft: 0, setPointerCapture(id) { this.pointerCapture = id; }, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this[name]; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
@@ -25,9 +25,9 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   class TestURL extends URL { static createObjectURL(blob) { savedBlob = blob; return 'blob:test'; } static revokeObjectURL() {} }
   const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}, click(){saved.push({href:this.href, name:this.download});}, remove(){}});
   const doc = {createElement, body:{appendChild(){}}, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
-  const context = {URL:TestURL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
+  const context = {AbortController, URL:TestURL, window: {location: {hostname}, events: {}, addEventListener(type, fn) { this.events[type] = fn; }}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
-    fetch: async (url, options) => { if (String(url) !== '/api/scrape') { if (mediaFail) throw new Error('CORS'); if (mediaGate) await mediaGate; return new Response('original bytes', {headers:{'Content-Type':mediaType}}); } requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
+    fetch: async (url, options) => { if (String(url) !== '/api/scrape') { if (mediaHandler) return mediaHandler(String(url), options); if (mediaFail) throw new Error('CORS'); if (mediaGate) await mediaGate; return new Response('original bytes', {headers:{'Content-Type':mediaType}}); } requests.push(String(url)); requestBodies.push(JSON.parse(options.body)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'})), {status:responseStatus}); },
     setTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
   vm.runInNewContext(source, context);
   return {elements, doc, requests, requestBodies, setClipboard: text => { clipText = text; }, copied: () => copied, saved, savedBlob: () => savedBlob, release, releaseMedia, tick: () => intervalCallback(), cleared: () => cleared};
@@ -312,4 +312,58 @@ test('download errors and unsupported MIME never invent a filename; direct link 
     assert.equal(elements.download.href,'https://media.fbcdn.net/video.mp4?x=1');
     assert.equal(elements['save-media'].disabled,false);
   }
+});
+
+
+test('download all requests available carousel items serially and skips unavailable ones', async () => {
+  const payload={success:true,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1',totalItems:3,partial:true,items:[{position:1,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1'}, {position:2,available:false}, {position:3,mediaType:'video',mediaUrl:'https://x.fbcdn.net/3'}]};
+  const calls=[]; let finishFirst;
+  const mediaHandler=(url)=>{calls.push(url); if(url.endsWith('/1')) return new Promise(resolve=>{finishFirst=()=>resolve(new Response('first', {headers:{'Content-Type':'image/webp'}}));}); return Promise.resolve(new Response('second',{headers:{'Content-Type':'video/mp4'}}));};
+  const {elements,saved} = await setup({payload,mediaHandler});
+  elements.url.value='https://www.instagram.com/p/CAROUSEL/';
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['save-all'].hidden,false);
+  const pending=elements['save-all'].events.click();
+  assert.deepEqual(calls,['https://x.fbcdn.net/1']);
+  assert.equal(elements['save-media'].disabled,true);
+  assert.match(elements['download-status'].textContent,/1 of 2/);
+  finishFirst(); await pending;
+  assert.deepEqual(calls,['https://x.fbcdn.net/1','https://x.fbcdn.net/3']);
+  assert.deepEqual(saved.map(x=>x.name),['instagram_CAROUSEL_1.webp','instagram_CAROUSEL_3.mp4']);
+  assert.match(elements['download-status'].textContent,/Requested 2 of 2 downloads/);
+  assert.match(elements['download-status'].textContent,/1 unavailable/);
+  assert.equal(elements['save-media'].disabled,false);
+  assert.equal(elements['save-all'].disabled,false);
+});
+
+test('download all continues after a failure and reports it without claiming success', async () => {
+  const payload={success:true,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1',items:[1,2].map(i=>({position:i,mediaType:'photo',mediaUrl:`https://x.fbcdn.net/${i}`}))};
+  const mediaHandler=url=>url.endsWith('/1') ? Promise.reject(new Error('CORS')) : Promise.resolve(new Response('ok',{headers:{'Content-Type':'image/jpeg'}}));
+  const {elements,saved}=await setup({payload,mediaHandler});
+  await elements.form.events.submit({preventDefault(){}});
+  await elements['save-all'].events.click();
+  assert.deepEqual(saved.map(x=>x.name),['instagram_example_2.jpg']);
+  assert.match(elements['download-status'].textContent,/Requested 1 of 2 downloads/);
+  assert.match(elements['download-status'].textContent,/1 could not be fetched/);
+});
+
+test('a new lookup aborts the old batch and cannot download its remaining items', async () => {
+  const payload={success:true,mediaType:'photo',mediaUrl:'https://x.fbcdn.net/1',items:[1,2].map(i=>({position:i,mediaType:'photo',mediaUrl:`https://x.fbcdn.net/${i}`}))};
+  let signal; const calls=[];
+  const mediaHandler=(url,opts)=>{calls.push(url);signal=opts.signal;return new Promise((resolve,reject)=>{signal.addEventListener('abort',()=>reject(new Error('aborted')));});};
+  const {elements,saved}=await setup({payload,mediaHandler});
+  await elements.form.events.submit({preventDefault(){}});
+  const pending=elements['save-all'].events.click();
+  elements.url.value='https://www.instagram.com/p/SECOND/';
+  await elements.form.events.submit({preventDefault(){}});
+  await pending;
+  assert.equal(signal.aborted,true); assert.equal(saved.length,0); assert.equal(calls.length,1);
+  assert.equal(elements['save-all'].disabled,false);
+  assert.equal(elements.download.href,'https://x.fbcdn.net/1');
+});
+
+test('download all is hidden for a single media item', async () => {
+  const {elements}=await setup({photo:true});
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements['save-all'].hidden,true);
 });

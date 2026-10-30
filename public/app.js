@@ -9,6 +9,7 @@ const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
 const saveMedia = document.querySelector('#save-media');
+const saveAll = document.querySelector('#save-all');
 const downloadStatus = document.querySelector('#download-status');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
@@ -24,6 +25,10 @@ const previewCounter = document.querySelector('#preview-counter');
 let directUrl = '';
 let selectedFilename = '';
 let selectedType = 'media';
+let carouselDownloads = [];
+let carouselUnavailable = 0;
+let activeBatch = null;
+let lookupGeneration = 0;
 let moveMedia = () => {};
 let touchStart = null;
 
@@ -98,6 +103,14 @@ function isAllowedCdnUrl(value) {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  lookupGeneration++;
+  if (activeBatch) activeBatch.abort();
+  activeBatch = null;
+  carouselDownloads = [];
+  carouselUnavailable = 0;
+  saveAll.hidden = true;
+  saveAll.disabled = false;
+  saveMedia.disabled = false;
   result.hidden = true;
   moveMedia = () => {};
   touchStart = null;
@@ -147,7 +160,7 @@ form.addEventListener('submit', async (event) => {
     const mediaUrl = data.mediaUrl || data.videoUrl;
     if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
     const rawItems = Array.isArray(data.items) && data.items.length ? data.items : [{position:1, mediaType:data.mediaType, mediaUrl, thumbnailUrl:data.thumbnailUrl, available:true}];
-    const items = rawItems.map((item, index) => ({...item, position:item.position || index + 1,
+    const items = rawItems.map((item, index) => ({...item, position:Number.isSafeInteger(item.position) && item.position > 0 ? item.position : index + 1,
       available:item.available !== false && isAllowedCdnUrl(item.mediaUrl),
       mediaType:item.mediaType === 'photo' ? 'photo' : item.mediaType === 'video' ? 'video' : 'unknown'}));
     mediaList.replaceChildren();
@@ -158,6 +171,10 @@ form.addEventListener('submit', async (event) => {
     const buttons = [];
     let selectedIndex = -1;
     const total = Math.max(items.length, Number(data.totalItems) || 0);
+    const shortcode = new URL(submittedUrl).pathname.split('/')[2];
+    carouselDownloads = items.filter(item => item.available).map(item => ({url:item.mediaUrl, filename:`instagram_${shortcode}_${item.position}`}));
+    carouselUnavailable = Math.max(0, total - carouselDownloads.length);
+    saveAll.hidden = total <= 1;
     const neighbor = (index, direction) => {
       for (let i = index + direction; i >= 0 && i < items.length; i += direction) if (items[i].available) return i;
       return -1;
@@ -166,10 +183,9 @@ form.addEventListener('submit', async (event) => {
       if (!item.available) return;
       selectedIndex = index;
       directUrl = item.mediaUrl;
-      const shortcode = new URL(submittedUrl).pathname.split('/')[2];
       selectedType = item.mediaType;
       selectedFilename = `instagram_${shortcode}${items.length > 1 ? `_${item.position}` : ''}`;
-      downloadStatus.textContent = '';
+      if (!activeBatch) downloadStatus.textContent = '';
       if (!saveMedia.disabled) saveMedia.firstChild.textContent = `Download ${item.mediaType} `;
       document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
       download.firstChild.textContent = `Open direct ${item.mediaType} `;
@@ -220,36 +236,72 @@ form.addEventListener('submit', async (event) => {
   finally { clearInterval(hintTimer); loading.hidden = true; submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
 });
 
-// Fetch directly from the CDN in the user's browser, never through the Worker.
-// Preserve the response bytes; use its MIME type rather than guessing from the URL.
+// Fetch directly from Instagram's CDN in the browser, preserving the original bytes.
+// Each call requests one browser download; browsers may block multiple downloads.
+async function requestMediaDownload(url, filename, signal) {
+  const response = await fetch(url, {mode:'cors', credentials:'omit', referrerPolicy:'no-referrer', signal});
+  if (!response.ok) throw new Error('Download unavailable');
+  const blob = await response.blob();
+  if (signal?.aborted) throw new Error('Cancelled');
+  const types = new Map([['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp'], ['image/avif','avif'], ['image/gif','gif'], ['video/mp4','mp4'], ['video/webm','webm'], ['video/quicktime','mov']]);
+  const extension = types.get(blob.type.toLowerCase().split(';')[0].trim());
+  if (!extension || !blob.size) throw new Error('Unsupported media type');
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `${filename}.${extension}`;
+  document.body.appendChild(link);
+  try { link.click(); }
+  finally { link.remove(); setTimeout(() => URL.revokeObjectURL(objectUrl), 60000); }
+}
+
 saveMedia.addEventListener('click', async () => {
   if (!directUrl || !selectedFilename || saveMedia.disabled) return;
-  const url = directUrl, filename = selectedFilename;
+  const url = directUrl, filename = selectedFilename, generation = lookupGeneration;
   saveMedia.disabled = true;
+  saveAll.disabled = true;
   saveMedia.firstChild.textContent = 'Preparing download ';
   downloadStatus.textContent = 'Downloading directly from Instagram’s CDN…';
   try {
-    const response = await fetch(url, {mode:'cors', credentials:'omit', referrerPolicy:'no-referrer'});
-    if (!response.ok) throw new Error('Download unavailable');
-    const blob = await response.blob();
-    const types = new Map([['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp'], ['image/avif','avif'], ['image/gif','gif'], ['video/mp4','mp4'], ['video/webm','webm'], ['video/quicktime','mov']]);
-    const extension = types.get(blob.type.toLowerCase().split(';')[0].trim());
-    if (!extension || !blob.size) throw new Error('Unsupported media type');
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = `${filename}.${extension}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-    downloadStatus.textContent = 'Download started in your browser.';
+    await requestMediaDownload(url, filename);
+    if (generation === lookupGeneration) downloadStatus.textContent = 'Download started in your browser.';
   } catch {
-    downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
+    if (generation === lookupGeneration) downloadStatus.textContent = 'Could not download directly. Use Open direct media and your browser’s save option instead.';
   } finally {
+    if (generation !== lookupGeneration) return;
     saveMedia.disabled = false;
+    saveAll.disabled = false;
     // The selection may have changed while the download was in progress.
     saveMedia.firstChild.textContent = `Download ${selectedType === 'unknown' ? 'media' : selectedType} `;
+  }
+});
+
+saveAll.addEventListener('click', async () => {
+  if (saveAll.disabled || carouselDownloads.length === 0) return;
+  const batch = carouselDownloads.slice();
+  const unavailable = carouselUnavailable;
+  const controller = new AbortController();
+  activeBatch = controller;
+  saveAll.disabled = true;
+  saveMedia.disabled = true;
+  let requested = 0, failed = 0;
+  try {
+    for (const [index, item] of batch.entries()) {
+      if (controller.signal.aborted) return;
+      downloadStatus.textContent = `Preparing ${index + 1} of ${batch.length}. Allow multiple downloads if your browser asks.`;
+      try { await requestMediaDownload(item.url, item.filename, controller.signal); requested++; }
+      catch { if (controller.signal.aborted) return; failed++; }
+    }
+    if (activeBatch !== controller) return;
+    const problems = [unavailable ? `${unavailable} unavailable` : '', failed ? `${failed} could not be fetched; try them individually` : ''].filter(Boolean);
+    downloadStatus.textContent = `Requested ${requested} of ${batch.length} downloads. Allow multiple downloads if your browser asks.${problems.length ? ' ' + problems.join('; ') + '.' : ''}`;
+  } finally {
+    if (activeBatch === controller) {
+      activeBatch = null;
+      saveAll.disabled = false;
+      saveMedia.disabled = false;
+      saveMedia.firstChild.textContent = `Download ${selectedType === 'unknown' ? 'media' : selectedType} `;
+    }
   }
 });
 
