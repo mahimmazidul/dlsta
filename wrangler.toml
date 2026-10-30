@@ -1,10 +1,12 @@
-name = "insta-dl"
+name = "dlsta"
 main = "worker/index.js"
 compatibility_date = "2026-10-30"
 
 [assets]
 directory = "./public"
 binding = "ASSETS"
+# Run the Worker for HTML/SEO and the API so URLs match the current host.
+run_worker_first = ["/", "/index.html", "/sitemap.xml", "/robots.txt", "/api/*"]
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
