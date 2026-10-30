@@ -22,13 +22,16 @@ test('bad input, rate limit, and missing KV do not expose details', async () => 
   r=await worker.fetch(req(''),{}); assert.equal(r.status,503);
   assert.doesNotMatch(await r.text(), /stack|worker\/index/);
 });
-test('html scraping and redirect enforcement using mocked fetch', async () => {
+test('html scraping returns direct CDN links and the proxy endpoint is removed', async () => {
   const original=globalThis.fetch;
   try {
     globalThis.fetch=async () => new Response('<meta property="og:video" content="https://a.fbcdn.net/v.mp4"><meta name="og:description" content="Hello &amp; bye">',{status:200});
     assert.deepEqual(await scrapeInstagram('https://instagram.com/reel/abc/'), {videoUrl:'https://a.fbcdn.net/v.mp4', thumbnailUrl:'', caption:'Hello & bye'});
-    globalThis.fetch=async () => new Response(null,{status:302,headers:{location:'https://example.com/a.mp4'}});
-    const r=await worker.fetch(new Request('https://app.example/api/proxy?url=https%3A%2F%2Fa.fbcdn.net%2Fa'),env());
-    assert.equal(r.status,400);
+    const response = await worker.fetch(req('https://instagram.com/reel/abc/'),env());
+    const payload = await response.json();
+    assert.equal(payload.success,true);
+    assert.equal(payload.videoUrl,'https://a.fbcdn.net/v.mp4');
+    const removed = await worker.fetch(new Request('https://app.example/api/proxy?url=https%3A%2F%2Fa.fbcdn.net%2Fa'),env());
+    assert.equal(removed.status,404);
   } finally {globalThis.fetch=original;}
 });
