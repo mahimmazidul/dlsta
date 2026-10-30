@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../worker/index.js';
-import {validMediaUrl, normalizeInstagramUrl, scrapeInstagram} from '../worker/scraper.js';
+import {validMediaUrl, normalizeInstagramUrl, scrapeInstagram, parseEmbedMedia} from '../worker/scraper.js';
 
 const kv = () => { const keys = new Map(); return {list: async ({prefix}) => ({keys:[...keys.keys()].filter(k => k.startsWith(prefix)).map(name=>({name}))}), put: async (k,v) => keys.set(k,v)}; };
 const env = () => ({RATE_LIMIT: kv()});
@@ -78,4 +78,38 @@ test('failed upstream lookup produces sanitized stage diagnostics without leakin
     assert.doesNotMatch(JSON.stringify(record), /secretpost|personal|private response|cookie|csrftoken/);
     assert.doesNotMatch(await response.text(), /stack|graphql|429/);
   } finally {globalThis.fetch = originalFetch; console.warn = originalWarn;}
+});
+
+
+test('embed structured context recovers first carousel photo when GraphQL has no item', async () => {
+  const originalFetch = globalThis.fetch;
+  const root = {shortcode:'DfGUZ1GjB-A', __typename:'GraphSidecar', is_video:false,
+    edge_media_to_caption:{edges:[{node:{text:'Example caption'}}]},
+    edge_sidecar_to_children:{edges:[{node:{shortcode:'child', is_video:false, display_url:'https://x.cdninstagram.com/first.jpg'}},
+      {node:{is_video:true, display_url:'https://x.cdninstagram.com/cover.jpg'}}]}};
+  const context = JSON.stringify({context:{shortcode:root.shortcode},gql_data:{shortcode_media:root}});
+  const embed = `<script>{"contextJSON":${JSON.stringify(context)}}</script>`;
+  try {
+    let graphqlCalls = 0;
+    globalThis.fetch = async target => {
+      if (String(target).includes('/graphql/query')) { graphqlCalls++; return new Response('{"data":null}'); }
+      if (String(target).includes('/embed/captioned/')) return new Response(embed);
+      return new Response('<html></html>');
+    };
+    const result = await scrapeInstagram('https://www.instagram.com/p/DfGUZ1GjB-A/?cplk=test');
+    assert.deepEqual(result,{mediaType:'photo',mediaUrl:'https://x.cdninstagram.com/first.jpg',photoUrl:'https://x.cdninstagram.com/first.jpg',thumbnailUrl:'https://x.cdninstagram.com/first.jpg',caption:'Example caption'});
+    assert.equal(graphqlCalls,0);
+  } finally {globalThis.fetch = originalFetch;}
+});
+
+test('embed context rejects mismatched posts, unknown types, unsafe links and video covers', () => {
+  const embed = root => `<script>{"contextJSON":${JSON.stringify(JSON.stringify({context:{shortcode:root.shortcode},gql_data:{shortcode_media:root}}))}}</script>`;
+  assert.equal(parseEmbedMedia(embed({shortcode:'other',is_video:false,display_url:'https://x.fbcdn.net/p.jpg'}),'wanted'),null);
+  assert.equal(parseEmbedMedia(embed({shortcode:'wanted',display_url:'https://x.fbcdn.net/p.jpg'}),'wanted'),null);
+  assert.equal(parseEmbedMedia(embed({shortcode:'wanted',is_video:false,display_url:'https://fbcdn.net.evil.test/p.jpg'}),'wanted'),null);
+  assert.equal(parseEmbedMedia(embed({shortcode:'wanted',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg'}),'wanted'),null);
+  assert.equal(parseEmbedMedia(embed({shortcode:'wanted',__typename:'GraphSidecar',is_video:false,display_url:'https://x.fbcdn.net/cover.jpg'}),'wanted'),null);
+  const video = parseEmbedMedia(embed({shortcode:'wanted',__typename:'GraphVideo',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg',video_url:'https://x.fbcdn.net/v.mp4'}),'wanted');
+  assert.equal(video.mediaType,'video'); assert.equal(video.videoUrl,'https://x.fbcdn.net/v.mp4');
+  assert.equal(parseEmbedMedia('<script>{"contextJSON":"broken"}</script>','wanted'),null);
 });
