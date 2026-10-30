@@ -74,7 +74,7 @@ jobs:
           retention-days: 30
 
   emulator:
-    name: Android emulator smoke test
+    name: Android emulator and real-media tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
     defaults:
