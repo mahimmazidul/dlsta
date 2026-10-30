@@ -31,3 +31,8 @@ function meta(html, name) {
   }
   return '';
 }
+function field(html, name) {
+  const m = html.match(new RegExp('"' + name + '"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"', 'i'));
+  if (!m) return '';
+  try { return decode(JSON.parse('"' + m[1] + '"')); } catch { return decode(m[1]); }
+}
