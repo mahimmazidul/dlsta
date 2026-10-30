@@ -980,6 +980,18 @@ saveMedia.addEventListener('click', async () => {
   }
 });
 
+// Space browser download requests so a fast CDN cannot emit a burst of clicks.
+// Cancellation stops the wait promptly when a new lookup starts.
+function pauseBetweenDownloads(signal) {
+  return new Promise(resolve => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(finish, 250);
+    function finish() { signal.removeEventListener('abort', cancel); resolve(); }
+    function cancel() { clearTimeout(timer); finish(); }
+    signal.addEventListener('abort', cancel, {once:true});
+  });
+}
+
 saveAll.addEventListener('click', async () => {
   if (saveAll.disabled || carouselDownloads.length === 0) return;
   const batch = carouselDownloads.slice();
@@ -993,7 +1005,11 @@ saveAll.addEventListener('click', async () => {
     for (const [index, item] of batch.entries()) {
       if (controller.signal.aborted) return;
       downloadStatus.textContent = `Preparing ${index + 1} of ${batch.length}. Allow multiple downloads if your browser asks.`;
-      try { await requestMediaDownload(item.url, item.filename, controller.signal); requested++; }
+      try {
+        await requestMediaDownload(item.url, item.filename, controller.signal);
+        requested++;
+        if (index < batch.length - 1) await pauseBetweenDownloads(controller.signal);
+      }
       catch { if (controller.signal.aborted) return; failed++; }
     }
     if (activeBatch !== controller) return;
@@ -1255,7 +1271,7 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 
 ## What it does
 
-- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN. For carousels, **Download all** requests the available files in order, one at a time, without a ZIP; unavailable items are reported.
+- Resolves supported **public** Instagram photo, video and reel links without requiring an Instagram login. For carousels, use the preview arrows, swipe left or right, select thumbnails, or focus the preview and use the arrow keys. Unavailable items are indicated and skipped by the arrows. Each available item opens directly from Instagram’s CDN. For carousels, **Download all** requests the available files in order, one at a time, without a ZIP; requests are spaced by 250 ms to reduce browser throttling, and unavailable items are reported.
 - Shows the caption and thumbnail when available, plus a single-line, horizontally scrollable direct media URL and a copy button. Drag the link to scroll, or focus it and use the arrow keys; copying always copies the complete URL. When Instagram exposes multiple sized renditions, it selects the largest by dimensions (and bitrate as a video tie-breaker). This does not guarantee the original upload or the best version Instagram stores.
 - Downloads the selected original photo or video from Instagram's CDN directly in the browser, with a filename based on the shortcode and carousel position. The extension follows the actual response MIME type (for example, JPG, WebP or MP4); bytes are not converted. Cloudflare does **not** stream or proxy the media file. The browser loads each file into memory for a named download; if CORS, an unsupported format or the browser prevents it, use **Open direct media** and the browser’s save option instead. Multiple downloads may require browser permission or may be blocked. The app can report that downloads were requested, but cannot confirm that the browser saved every file. CDN transfers are requested sequentially; browser disk writes may overlap. Starting a new lookup cancels the remaining carousel requests. Tap **Paste & get link** to read the clipboard and start a lookup in supported browsers. If clipboard access is denied or unsupported, paste into the box manually. On desktop, paste a supported URL outside another editable field to fill the box.
 - After a successful lookup, the Instagram input clears and the paste button is ready for another link; the result stays visible. Invalid post URLs are cleared with an error before contacting the API. A valid link is retained after other lookup failures for retry, and a new link entered during an in-flight request is not overwritten. The selected media preview is centered.
@@ -1299,6 +1315,71 @@ The default Worker name in `wrangler.toml` is **dlsta**, matching the app and pa
 
 ### Manual deployment (Node.js 22+)
 
+```sh
+npm ci
+npx wrangler login
+# Recent Wrangler provisions the ID-less RATE_LIMIT binding on first deploy.
+npx wrangler deploy
+```
+
+Wrangler writes the provisioned namespace ID into the local configuration; dashboard-based provisioning keeps the resource ID in Cloudflare rather than necessarily writing it to your repository. Do not copy another account’s namespace ID. Verify the `RATE_LIMIT` binding on the deployed Worker. If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
+
+### Add your subdomain
+
+1. In Cloudflare, open **Workers & Pages → dlsta → Settings → Domains & Routes → Add → Custom Domain**.
+2. Enter your subdomain in a zone managed by your Cloudflare account and complete the prompts. Cloudflare creates the required DNS record and certificate. If the hostname is attached to an old Worker, move it to `dlsta` when you are ready.
+3. Open the new HTTPS address. The frontend uses the same-origin `/api/scrape` automatically; no Worker URL is required in `public/app.js` on this combined deployment. Canonical, social image, sitemap and robots URLs are generated from whichever host receives the request.
+
+If both `workers.dev` and your custom subdomain remain public, both will describe themselves as canonical. For one preferred search URL, configure a redirect from the other hostname to your chosen domain. See Cloudflare's [custom domain instructions](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
+Optional oEmbed: `npx wrangler secret put INSTAGRAM_OEMBED_TOKEN`. Obtain an appropriate Meta app access token and permissions from Meta; do not commit it. It is sent only to the official Graph API. No token is needed for the other methods.
+
+## Separate frontend
+
+For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the contents of `public/` as the site root. This is a static frontend only: the root `wrangler.toml` configures a **Worker**, not a Pages Functions project. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages only when manually started from Actions → Deploy frontend to GitHub Pages → Run workflow. Pushes and GitHub web edits do not trigger it. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
+
+## API
+
+- `POST /api/scrape` with JSON `{ "url": "https://www.instagram.com/reel/.../" }`, or GET with `?url=...`. Returns `{success, mediaType, mediaUrl, thumbnailUrl, caption}` on success, plus `videoUrl` or `photoUrl` for the matching media type. Carousels also return `items`, `totalItems`, and `partial`; each item reports its position, type, availability, and direct URL when available. `mediaType` is `video` or `photo`; empty `thumbnailUrl` and `caption` mean unavailable.
+- The response contains a direct Instagram CDN photo or video URL. Open or copy it from the UI; media bytes are delivered by Instagram, not proxied through this Worker. Signed CDN URLs expire and may be restricted. Some browsers play the video rather than forcing a download; use the browser’s save or download option.
+- Errors return JSON without stack traces. Bad input is 400; 404 means upstream indicated unavailability, not proof of deletion; ambiguous upstream failures return 502.
+
+The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
+
+## Regional placement
+
+`wrangler.toml` requests placement near AWS `us-east-1` as a best-effort mitigation for Instagram returning empty public embed data in some Cloudflare regions. The Worker remains on Cloudflare, and media downloads still go directly to Instagram’s CDN. Placement can increase latency for visitors farther away, may change during Cloudflare maintenance, and cannot guarantee that Instagram returns media. You can remove `[placement]` to restore default edge placement or change the region and redeploy. Verify from the affected location; a `cf-placement` header alone does not guarantee the subrequest egress location. See [Cloudflare placement documentation](https://developers.cloudflare.com/workers/configuration/placement/).
+
+## Troubleshooting lookup failures
+
+Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed has null context or lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
+
+## Cloudflare Free plan usage
+
+The placement hint forwards the same incoming Worker request to the chosen region; it does not itself create a second billable Worker request or proxy the media. Longer network waiting is not billed as CPU time. Upstream responses and actual CPU time can still vary, and more traffic or retries use more quota. See [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) and [Placement](https://developers.cloudflare.com/workers/configuration/placement/).
+
+Cloudflare's Free plan currently includes 100,000 Worker requests per day and 10 ms CPU per invocation. KV includes 1,000 writes and 1,000 list requests per day, shared across the account. The API's rate limiter normally makes one list and one write for each request it allows, even if that lookup later fails or contains invalid input; a rate-limited attempt still performs a list. A successful media lookup normally makes one API request; the direct CDN download makes none. In ideal conditions the KV quotas allow roughly **1,000 successful lookups per day** if nothing else uses the quota. Invalid requests, retries, rate-limited traffic, and other applications reduce that number. The exact result is not guaranteed; Instagram availability and the CPU limit also matter.
+
+Once a KV operation quota is exhausted, the API can return errors until the quotas reset at 00:00 UTC. Static CSS, JavaScript and image assets served directly are free and unlimited, but HTML, sitemap and robots requests invoke the Worker so they count against the Worker request limit; a separate GitHub Pages frontend does not consume Cloudflare Worker requests for page views, but its API calls still do. On a paid plan, usage beyond included allowances can incur charges. Check the current [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [KV pricing](https://developers.cloudflare.com/kv/platform/pricing/), and your dashboard usage before relying on these figures.
+
+## Search visibility and branding
+
+On the combined Cloudflare Worker, the canonical address, social previews, structured data, sitemap and robots file automatically use the current request host. The static GitHub Pages copy defaults to `https://mahimmazidul.github.io/dlsta/`. The existing dlsta mark is provided as an SVG, PNG favicons, an Apple touch icon and web manifest icons; `public/images/social-card.png` is the 1200×630 social preview. API responses send `X-Robots-Tag: noindex, nofollow`.
+
+Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as described above; otherwise the page loads but media lookups cannot work. Search metadata cannot replace a working backend.
+
+1. Deploy the site, then add your preferred URL-prefix property to [Google Search Console](https://search.google.com/search-console/): your Worker/custom-domain URL, or `https://mahimmazidul.github.io/dlsta/` for GitHub Pages. Verify ownership using an available method, such as adding the supplied HTML verification file to `public/` and redeploying.
+2. Submit the sitemap under that address (for example, `https://your-subdomain.example/sitemap.xml`) and optionally request indexing of the homepage with URL Inspection. Crawling and indexing are not guaranteed and may take time.
+3. The GitHub Pages site is in a **subdirectory**. Search crawlers read `robots.txt` at the **hostname root**, not `dlsta/robots.txt`; submit its sitemap directly. A combined Worker generates its own root robots and sitemap files. Google generally chooses one search favicon per hostname, so it may not display this project's icon independently for a subdirectory.
+4. For a separate static deployment or fork, replace the absolute canonical, Open Graph, Twitter and JSON-LD URLs in `public/index.html`, the `<loc>` in `public/sitemap.xml`, and the sitemap URL in `public/robots.txt`. Update the SEO test’s static canonical URL to match. A combined Worker automatically generates these URLs from its own hostname.
+
+## License and credit
+
+[Apache License 2.0](LICENSE). Copyright 2026 Md. Mazidul Islam Mahim. The self-hosted DM Sans and Instrument Serif font files are licensed separately under the SIL Open Font License 1.1; see `public/fonts/DM-Sans-OFL.txt` and `public/fonts/Instrument-Serif-OFL.txt`. See [NOTICE](NOTICE) for attribution. dlsta is not affiliated with Instagram or Meta.
+
+## Verification
+
+See `RESEARCH.md` for the repository audit, test results, limitations, and attribution. `test/live-results.json` contains time-sensitive raw responses from the initial comparative tests; signed URLs in those responses will expire. Run `npm test` for offline unit tests. Test results are snapshots, not guarantees of future Instagram behavior.
 ```sh
 npm ci
 npx wrangler login
