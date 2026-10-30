@@ -59,3 +59,23 @@ test('unavailable KV returns 503 and oversized request body returns 413', async 
   const huge = new Request('https://app.example/api/scrape', {method:'POST', body:'x'.repeat(5000)});
   assert.equal((await worker.fetch(huge, env())).status, 413);
 });
+
+
+test('failed upstream lookup produces sanitized stage diagnostics without leaking URL or response body', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  let record;
+  try {
+    console.warn = (...args) => { record = args; };
+    globalThis.fetch = async target => {
+      if (String(target).includes('/graphql/query')) return new Response('private response detail', {status: 429});
+      if (String(target) === 'https://www.instagram.com/') return new Response('visitor page', {status: 200});
+      return new Response('private response detail', {status: 403});
+    };
+    const response = await worker.fetch(req('https://instagram.com/p/secretpost/?personal=secret'), env());
+    assert.equal(response.status, 502);
+    assert.deepEqual(record, ['Instagram lookup failed:', '{"embed":403,"page":403,"home":200,"graphql":429}']);
+    assert.doesNotMatch(JSON.stringify(record), /secretpost|personal|private response|cookie|csrftoken/);
+    assert.doesNotMatch(await response.text(), /stack|graphql|429/);
+  } finally {globalThis.fetch = originalFetch; console.warn = originalWarn;}
+});
