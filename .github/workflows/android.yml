@@ -108,7 +108,7 @@ jobs:
           working-directory: android
           script: >-
             sh -c 'gradle --no-daemon --max-workers=2 :app:connectedDebugAndroidTest;
-            result=$?; adb pull /sdcard/Download/dlsta-native-screen.png native-screen.png || true; exit "$result"'
+            result=$?; for file in dlsta-native-screen dlsta-small-dark dlsta-small-light dlsta-small-result dlsta-wide; do adb pull /sdcard/Download/$file.png $file.png || true; done; exit "$result"'
       - name: Upload emulator test report
         if: always()
         uses: actions/upload-artifact@v4
@@ -116,6 +116,6 @@ jobs:
           name: dlsta-android-emulator-report
           path: |
             android/app/build/reports/androidTests/connected/
-            android/native-screen.png
+            android/dlsta-*.png
           if-no-files-found: ignore
           retention-days: 30
