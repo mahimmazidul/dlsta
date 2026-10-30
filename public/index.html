@@ -56,10 +56,13 @@
           <form id="form">
             <label for="url">Instagram link</label>
             <div class="input-row">
-              <input id="url" name="url" type="url" placeholder="instagram.com/p/…" autocomplete="url">
+              <div class="link-entry">
+                <span class="link-icon" aria-hidden="true">↗</span>
+                <input id="url" name="url" type="url" placeholder="instagram.com/p/…" autocomplete="url" spellcheck="false">
+              </div>
               <button id="submit" type="submit"><span>Paste &amp; get link</span><span aria-hidden="true">↗</span></button>
             </div>
-            <div class="form-note"><span><span aria-hidden="true">◉</span> Public posts and reels only</span><span>No login needed</span></div>
+            <div class="form-note"><span><span class="note-dot" aria-hidden="true"></span> Public posts and reels only</span><span>No login needed</span></div>
           </form>
           <div id="message" class="message" role="status" aria-live="polite"></div>
           <article id="result" class="result" hidden aria-label="Media result">
@@ -78,7 +81,7 @@
                 <input id="direct-url" type="url" readonly spellcheck="false" aria-label="Direct media link">
                 <button id="copy" type="button" class="copy-action">Copy</button>
               </div>
-              <p class="download-note">Media opens directly from Instagram’s CDN. Use your browser’s save or download option. Links may expire.</p>
+              <p class="download-note">Opens directly from Instagram’s CDN. Use your browser’s save option; links may expire.</p>
             </div>
           </article>
         </div>
