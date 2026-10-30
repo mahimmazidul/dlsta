@@ -108,7 +108,7 @@ jobs:
           working-directory: android
           script: >-
             sh -c 'gradle --no-daemon --max-workers=2 :app:connectedDebugAndroidTest;
-            result=$?; adb pull /sdcard/Android/data/com.mahimmazidul.dlsta/files/native-screen.png native-screen.png || true; exit "$result"'
+            result=$?; adb pull /sdcard/Download/dlsta-native-screen.png native-screen.png || true; exit "$result"'
       - name: Upload emulator test report
         if: always()
         uses: actions/upload-artifact@v4

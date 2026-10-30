@@ -4,7 +4,6 @@ import static org.junit.Assert.*;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -15,8 +14,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -43,10 +40,10 @@ public class AppSmokeTest {
                 activity.findViewById(R.id.next_button).performClick();assertEquals("2 / 2",((TextView)activity.findViewById(R.id.media_counter)).getText().toString());
                 activity.findViewById(R.id.copy_button).performClick();ClipboardManager clipboard=(ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE);assertEquals("https://video.cdninstagram.com/2.mp4",clipboard.getPrimaryClip().getItemAt(0).coerceToText(activity).toString());
             }catch(Exception e){throw new AssertionError(e);}});
-            // Capture the native UI in the emulator report for visual review.
+            // Shell-owned screenshot survives the Android test package being removed.
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-            Bitmap screenshot=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
-            scenario.onActivity(activity->{try(FileOutputStream out=new FileOutputStream(new File(activity.getExternalFilesDir(null),"native-screen.png"))){screenshot.compress(Bitmap.CompressFormat.PNG,100,out);}catch(Exception ignored){}});
+            try (android.os.ParcelFileDescriptor fd=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("screencap -p /sdcard/Download/dlsta-native-screen.png");
+                 java.io.FileInputStream in=new java.io.FileInputStream(fd.getFileDescriptor())) { while(in.read()!=-1) { } }
         }
     }
 }
