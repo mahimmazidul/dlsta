@@ -1,4 +1,5 @@
-// Leave empty for a combined Worker deployment; for Pages set the full Worker origin.
+// Leave empty on Cloudflare: /api/scrape automatically uses the current Worker or custom domain.
+// Only set a Worker origin here when the frontend is hosted separately (for example, GitHub Pages).
 const WORKER_URL = '';
 const form = document.querySelector('#form');
 const message = document.querySelector('#message');
