@@ -97,7 +97,11 @@ test('embed structured context recovers first carousel photo when GraphQL has no
       return new Response('<html></html>');
     };
     const result = await scrapeInstagram('https://www.instagram.com/p/DfGUZ1GjB-A/?cplk=test');
-    assert.deepEqual(result,{mediaType:'photo',mediaUrl:'https://x.cdninstagram.com/first.jpg',photoUrl:'https://x.cdninstagram.com/first.jpg',thumbnailUrl:'https://x.cdninstagram.com/first.jpg',caption:'Example caption'});
+    assert.equal(result.mediaUrl,'https://x.cdninstagram.com/first.jpg');
+    assert.equal(result.caption,'Example caption');
+    assert.equal(result.items.length,2);
+    assert.equal(result.items[1].available,false);
+    assert.equal(result.partial,true);
     assert.equal(graphqlCalls,0);
   } finally {globalThis.fetch = originalFetch;}
 });
@@ -112,4 +116,28 @@ test('embed context rejects mismatched posts, unknown types, unsafe links and vi
   const video = parseEmbedMedia(embed({shortcode:'wanted',__typename:'GraphVideo',is_video:true,display_url:'https://x.fbcdn.net/cover.jpg',video_url:'https://x.fbcdn.net/v.mp4'}),'wanted');
   assert.equal(video.mediaType,'video'); assert.equal(video.videoUrl,'https://x.fbcdn.net/v.mp4');
   assert.equal(parseEmbedMedia('<script>{"contextJSON":"broken"}</script>','wanted'),null);
+});
+
+
+test('carousel returns all available items and picks largest safe rendition', () => {
+  const photo = (i) => ({is_video:false, display_url:`https://x.fbcdn.net/fallback${i}.jpg`, display_resources:[
+    {src:`https://x.fbcdn.net/small${i}.jpg`,config_width:320,config_height:320},
+    {src:`https://x.fbcdn.net/large${i}.jpg`,config_width:1440,config_height:1440},
+    {src:'https://fbcdn.net.evil.test/bad.jpg',config_width:9999,config_height:9999}]});
+  const root = {shortcode:'abc',__typename:'GraphSidecar',edge_sidecar_to_children:{edges:[{node:photo(1)},{node:photo(2)},{node:{media_type:2,video_versions:[{url:'https://x.fbcdn.net/low.mp4',width:320,height:480},{url:'https://x.fbcdn.net/high.mp4',width:1080,height:1920}],image_versions2:{candidates:[{url:'https://x.fbcdn.net/cover.jpg',width:320,height:320}]}}}]}};
+  const html = `<script>{"contextJSON":${JSON.stringify(JSON.stringify({gql_data:{shortcode_media:root}}))}}</script>`;
+  const result = parseEmbedMedia(html,'abc');
+  assert.equal(result.totalItems,3); assert.equal(result.partial,false);
+  assert.deepEqual(result.items.map(x=>x.mediaUrl),['https://x.fbcdn.net/large1.jpg','https://x.fbcdn.net/large2.jpg','https://x.fbcdn.net/high.mp4']);
+  assert.equal(result.items[2].mediaType,'video');
+});
+
+test('GraphQL fallback returns all carousel candidates and marks unavailable items', async () => {
+  const original=globalThis.fetch;
+  try {
+    globalThis.fetch=async target => String(target).includes('/graphql/query') ? new Response(JSON.stringify({data:{xdt_api__v1__media__shortcode__web_info:{items:[{carousel_media:[{media_type:1,image_versions2:{candidates:[{url:'https://x.fbcdn.net/low.jpg',width:100,height:100},{url:'https://x.fbcdn.net/high.jpg',width:900,height:900}]}},{media_type:2,image_versions2:{candidates:[{url:'https://x.fbcdn.net/cover.jpg',width:300,height:300}]}}]}]}}})) : new Response('<html></html>');
+    const result=await scrapeInstagram('https://instagram.com/p/abc/');
+    assert.equal(result.items[0].mediaUrl,'https://x.fbcdn.net/high.jpg');
+    assert.equal(result.items[1].available,false); assert.equal(result.totalItems,2); assert.equal(result.partial,true);
+  } finally {globalThis.fetch=original;}
 });
