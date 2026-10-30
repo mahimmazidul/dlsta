@@ -1,0 +1,48 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.mahimmazidul.dlsta'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.mahimmazidul.dlsta'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0-beta.1'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    signingConfigs {
+        release {
+            if (System.getenv('DLSTA_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('DLSTA_KEYSTORE_PATH'))
+                storePassword System.getenv('DLSTA_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('DLSTA_KEY_ALIAS')
+                keyPassword System.getenv('DLSTA_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('DLSTA_KEYSTORE_PATH')) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/dlsta-assets')]
+    testOptions { unitTests.returnDefaultValues = true }
+}
+
+tasks.register('syncDlstaWeb', Sync) {
+    from('../../public')
+    into(layout.buildDirectory.dir('generated/dlsta-assets/www'))
+}
+tasks.named('preBuild').configure { dependsOn('syncDlstaWeb') }
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.work:work-runtime:2.10.0'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+}

@@ -3,3 +3,12 @@ node_modules/
 .dev.vars
 .env*
 !.env.example
+
+# Android: local SDK paths, generated outputs, and signing material
+android/local.properties
+android/.gradle/
+android/**/build/
+*.jks
+*.keystore
+.gradle/
+android-sdk/
