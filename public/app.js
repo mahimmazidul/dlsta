@@ -9,6 +9,8 @@ const download = document.querySelector('#download');
 const copy = document.querySelector('#copy');
 const directInput = document.querySelector('#direct-url');
 const urlInput = document.querySelector('#url');
+const mediaList = document.querySelector('#media-list');
+const mediaCount = document.querySelector('#media-count');
 let directUrl = '';
 
 function isAllowedCdnUrl(value) {
@@ -40,16 +42,45 @@ form.addEventListener('submit', async (event) => {
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to find media. Please try again.');
     const mediaUrl = data.mediaUrl || data.videoUrl;
     if (!isAllowedCdnUrl(mediaUrl)) throw new Error('The returned link was not a supported Instagram CDN URL.');
-    const mediaType = data.mediaType === 'photo' ? 'photo' : 'video';
-    directUrl = mediaUrl;
-    document.querySelector('#result-title').textContent = `Your ${mediaType} is ready.`;
-    download.firstChild.textContent = `Open direct ${mediaType} `;
-    download.href = directUrl; // Direct to Instagram's CDN; the Worker does not proxy video bytes.
-    directInput.value = directUrl;
-    const imageWrap = document.querySelector('#image-wrap');
-    const image = document.querySelector('#thumbnail');
-    imageWrap.hidden = !isAllowedCdnUrl(data.thumbnailUrl);
-    if (!imageWrap.hidden) image.src = data.thumbnailUrl;
+    const rawItems = Array.isArray(data.items) && data.items.length ? data.items : [{position:1, mediaType:data.mediaType, mediaUrl, thumbnailUrl:data.thumbnailUrl, available:true}];
+    const items = rawItems.map((item, index) => ({...item, position:item.position || index + 1,
+      available:item.available !== false && isAllowedCdnUrl(item.mediaUrl),
+      mediaType:item.mediaType === 'photo' ? 'photo' : item.mediaType === 'video' ? 'video' : 'unknown'}));
+    mediaList.replaceChildren();
+    mediaList.hidden = items.length <= 1;
+    mediaCount.hidden = items.length <= 1 && !data.partial;
+    const available = items.filter(item => item.available).length;
+    mediaCount.textContent = data.partial ? `${available} items available; some could not be retrieved.` : `${items.length} items · Select one to open or copy`;
+    const buttons = [];
+    function selectItem(item, selectedIndex) {
+      if (!item.available) return;
+      directUrl = item.mediaUrl;
+      document.querySelector('#result-title').textContent = items.length > 1 ? `Item ${item.position} · ${item.mediaType}` : `Your ${item.mediaType} is ready.`;
+      download.firstChild.textContent = `Open direct ${item.mediaType} `;
+      download.href = directUrl; // Direct to Instagram's CDN; no media proxy.
+      directInput.value = directUrl;
+      const imageWrap = document.querySelector('#image-wrap');
+      const image = document.querySelector('#thumbnail');
+      imageWrap.hidden = !isAllowedCdnUrl(item.thumbnailUrl);
+      if (!imageWrap.hidden) image.src = item.thumbnailUrl;
+      buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selectedIndex)));
+    }
+    if (items.length > 1) items.forEach((item, index) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'media-choice'; button.disabled = !item.available;
+      button.setAttribute('aria-label', `Item ${item.position}: ${item.available ? item.mediaType : 'unavailable'}`);
+      button.setAttribute('aria-pressed', 'false');
+      if (isAllowedCdnUrl(item.thumbnailUrl)) {
+        const thumb = document.createElement('img'); thumb.src = item.thumbnailUrl; thumb.alt = ''; thumb.referrerPolicy = 'no-referrer';
+        button.appendChild(thumb);
+      }
+      const label = document.createElement('span'); label.textContent = item.available ? `${item.position} · ${item.mediaType}` : `${item.position} · unavailable`;
+      button.appendChild(label); button.addEventListener('click', () => selectItem(item, index));
+      buttons.push(button); mediaList.appendChild(button);
+    });
+    const firstAvailable = items.findIndex(item => item.available);
+    if (firstAvailable < 0) throw new Error('No supported media links were returned.');
+    selectItem(items[firstAvailable], firstAvailable);
     document.querySelector('#caption').textContent = data.caption || 'Your direct media link is ready to open or copy.';
     result.hidden = false;
   } catch (error) { message.textContent = error.message || 'Something went wrong. Please try again.'; }
