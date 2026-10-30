@@ -111,6 +111,8 @@ The frontend was subsequently redesigned as a more spacious, flat layout without
 
 A Dhaka-region failure showed HTTP 200 from the embed/page/home/GraphQL but no parseable context or post item. Additional fallbacks now check the alternate public post/reel embed, the non-captioned embed, and bounded JSON scripts with an exact matching shortcode. Null context is diagnosed separately. All five user-supplied URLs resolved in local tests; the new behavior has not yet been verified from Dhaka, and may not work if Instagram omits media across all public responses.
 
+The Dhaka production trace subsequently confirmed null `contextJSON` in all three public embeds, no page context and no GraphQL item, despite HTTP 200 responses. A temporary, access-controlled Cloudflare test Worker using this resolver was placed near AWS `us-east-1`; its outgoing Cloudflare trace reported IAD and all five supplied sample URLs resolved (two photo carousels with 10 and 3 items, and three videos). The test Worker was deleted afterward. Production configuration now requests the same region as a best-effort mitigation; this may increase latency, Cloudflare can change placement, and success from Dhaka has not yet been verified. Direct media downloads do not go through the Worker. The interface now omits horizontal dividers; Chromium tests at 320, 375, 768 and 1440 pixels found no horizontal overflow and confirmed FAQ toggling.
+
 # Phase 4 — Full code
 
 The repository also contains tests, npm lockfile, raw results, branding files and the Apache license.
@@ -250,7 +252,6 @@ export default {
     }
   }
 };
-
 ````
 
 ## `worker/scraper.js`
@@ -486,7 +487,6 @@ export async function scrapeInstagram(raw, options = {}) {
   // A 404 can be a misleading login/anti-bot response: do not claim deletion.
   throw new Error(saw404 ? 'UNAVAILABLE' : 'UPSTREAM');
 }
-
 ````
 
 ## `public/index.html`
@@ -608,22 +608,20 @@ export async function scrapeInstagram(raw, options = {}) {
   </div>
 </body>
 </html>
-
 ````
 
 ## `public/style.css`
 
 ````css
 :root{color-scheme:dark;--bg:#111310;--ink:#f1f2e8;--muted:#a6ada0;--soft:#858e80;--line:#363c33;--accent:#d8efab;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;scroll-behavior:smooth}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}a{color:inherit}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}.header{height:92px;display:flex;align-items:center;gap:40px;border-bottom:1px solid var(--line)}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:800;letter-spacing:-.07em;line-height:1}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#182014;font-size:22px;font-weight:800;letter-spacing:0}.brand-dot{color:var(--accent)}.header-nav{display:flex;gap:28px;margin-left:auto;font-size:12px;color:#b8bfb3}.header-nav a{text-decoration:none}.header-nav a:hover,.footer a:hover{color:var(--accent)}.header-pill{font-size:10px;letter-spacing:.1em;color:#929e8a}.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
-.hero{text-align:left;padding:112px 0 120px;max-width:790px}.hero-overline,.eyebrow{font-size:10px;font-weight:750;letter-spacing:.16em;color:#a7b995;margin:0}.hero h1{font-size:clamp(55px,8vw,86px);font-weight:650;line-height:1.02;letter-spacing:-.065em;margin:24px 0 22px}.hero h1 em,.about-copy h2 em{font-style:normal;color:var(--accent)}.hero-copy{color:var(--muted);font-size:15px;line-height:1.7;margin:0 0 64px}.tool-card{max-width:790px}label{display:block;font-size:11px;font-weight:700;color:#c9d0c2;margin-bottom:10px}.input-row{display:flex;align-items:center;gap:22px;border-bottom:1px solid #687462;padding:0 0 12px}.input-row:focus-within{border-color:var(--accent)}input{font:inherit}.input-row input{flex:1;min-width:0;padding:12px 0;border:0;outline:0;background:transparent;color:var(--ink);font-size:16px}.input-row input::placeholder{color:#6d776b}button{font-family:inherit}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:20px;min-height:48px;padding:0 20px;border:0;border-radius:99px;background:var(--accent);color:#172014;font-weight:700;font-size:12px;text-decoration:none;white-space:nowrap;cursor:pointer}.input-row button:hover,.primary-action:hover{background:#e7f8c3}.input-row button:disabled{opacity:.65;cursor:wait}.form-note{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--soft);margin-top:14px}.form-note span span{color:#bddb9a}.message{font-size:13px;line-height:1.5;color:#efb4a7}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}
-.result{display:flex;gap:24px;margin-top:38px;padding-top:26px;border-top:1px solid var(--line)}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{width:132px;min-width:132px;height:165px;overflow:hidden;background:#1d221b}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.1em;color:#a8c897}.result h3{font-size:20px;letter-spacing:-.03em;margin:10px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%;border-bottom:1px solid var(--line)}.direct-link-field:focus-within{border-color:var(--accent)}.direct-link-field input{width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:#c9d7bd;font-size:11px;padding:12px 0;text-overflow:ellipsis}.copy-action{border:0;background:transparent;color:var(--accent);font-size:12px;font-weight:700;padding:12px;cursor:pointer}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.6;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:5px 0 8px}.media-choice{flex:0 0 76px;min-width:0;border:0;border-bottom:2px solid transparent;background:transparent;color:#b8c1b1;padding:0 0 5px;cursor:pointer}.media-choice[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}.media-choice img{display:block;width:76px;height:70px;object-fit:cover}.media-choice span{display:block;padding:6px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}
-.how-section,.about-section{border-top:1px solid var(--line);padding:85px 0 90px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2,.about-copy h2{font-size:clamp(30px,4vw,43px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 0}.section-heading>p{font-size:12px;color:var(--soft);margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:38px;margin-top:44px}.steps article{border-top:1px solid var(--line);padding-top:20px}.step-top{font-size:11px;color:#a7b995}.steps h3{font-size:15px;margin:24px 0 10px}.steps p,.about-copy p,.faq p{font-size:13px;line-height:1.75;color:var(--muted);margin:0}.steps p{max-width:260px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{margin-bottom:24px}.about-copy p{margin-bottom:14px}.faq details{border-bottom:1px solid var(--line)}.faq details:first-child{border-top:1px solid var(--line)}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 30px 20px 0;font-size:13px;font-weight:650;line-height:1.5}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px}.faq details[open] summary::after{content:'−'}.faq p{padding:0 20px 20px 0}
-.footer{display:flex;justify-content:space-between;gap:25px;align-items:center;border-top:1px solid var(--line);padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:var(--soft);line-height:1.7;margin:9px 0 0}.footer-right{text-align:right}.footer-right a{color:var(--accent);text-decoration:underline;text-underline-offset:4px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible,.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-@media(max-width:700px){.wrap{width:calc(100% - 40px)}.header{height:76px;gap:15px}.header-nav{gap:15px}.header-nav a:first-child,.header-pill{display:none}.hero{padding:70px 0 75px}.hero h1{font-size:clamp(46px,10vw,64px);margin:20px 0}.hero-copy{font-size:14px;margin-bottom:48px}.input-row{align-items:stretch;flex-direction:column;gap:12px;border:0;padding:0}.input-row input{width:100%;border-bottom:1px solid #687462;padding:13px 0}.input-row input:focus{border-color:var(--accent)}.input-row button{width:100%;justify-content:space-between;padding:0 20px}.form-note{font-size:10px}.result{gap:16px}.result-image{width:92px;min-width:92px;height:128px}.result-actions .primary-action{width:100%}.how-section,.about-section{padding:65px 0}.section-heading{display:block}.section-heading>p{margin-top:12px}.steps{grid-template-columns:1fr;gap:28px;margin-top:32px}.steps h3{margin:14px 0 8px}.about-grid{grid-template-columns:1fr;gap:32px}.footer{flex-direction:column;align-items:center;text-align:center}.footer-right{text-align:center}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}a{color:inherit}.wrap{width:min(1120px,calc(100% - 80px));margin-inline:auto}.header{height:92px;display:flex;align-items:center;gap:40px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:800;letter-spacing:-.07em;line-height:1}.brand-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#182014;font-size:22px;font-weight:800;letter-spacing:0}.brand-dot{color:var(--accent)}.header-nav{display:flex;gap:28px;margin-left:auto;font-size:12px;color:#b8bfb3}.header-nav a{text-decoration:none}.header-nav a:hover,.footer a:hover{color:var(--accent)}.header-pill{font-size:10px;letter-spacing:.1em;color:#929e8a}.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
+.hero{text-align:left;padding:112px 0 120px;max-width:790px}.hero-overline,.eyebrow{font-size:10px;font-weight:750;letter-spacing:.16em;color:#a7b995;margin:0}.hero h1{font-size:clamp(55px,8vw,86px);font-weight:650;line-height:1.02;letter-spacing:-.065em;margin:24px 0 22px}.hero h1 em,.about-copy h2 em{font-style:normal;color:var(--accent)}.hero-copy{color:var(--muted);font-size:15px;line-height:1.7;margin:0 0 64px}.tool-card{max-width:790px}label{display:block;font-size:11px;font-weight:700;color:#c9d0c2;margin-bottom:10px}.input-row{display:flex;align-items:center;gap:22px;padding:0 0 12px}.input-row:focus-within{outline:0}input{font:inherit}.input-row input{flex:1;min-width:0;padding:12px 0;border:0;outline:0;background:transparent;color:var(--ink);font-size:16px}.input-row input::placeholder{color:#6d776b}button{font-family:inherit}.input-row button,.primary-action{display:inline-flex;align-items:center;justify-content:center;gap:20px;min-height:48px;padding:0 20px;border:0;border-radius:99px;background:var(--accent);color:#172014;font-weight:700;font-size:12px;text-decoration:none;white-space:nowrap;cursor:pointer}.input-row button:hover,.primary-action:hover{background:#e7f8c3}.input-row button:disabled{opacity:.65;cursor:wait}.form-note{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--soft);margin-top:14px}.form-note span span{color:#bddb9a}.message{font-size:13px;line-height:1.5;color:#efb4a7}.message:not(:empty){margin-top:18px}.message[data-kind=success]{color:var(--accent)}
+.result{display:flex;gap:24px;margin-top:38px;padding-top:26px}.result[hidden],.result-image[hidden],.media-list[hidden],.media-count[hidden]{display:none}.result-image{width:132px;min-width:132px;height:165px;overflow:hidden;background:#1d221b}.result-image img{display:block;width:100%;height:100%;object-fit:cover}.result-body{min-width:0;width:100%}.result-kicker{font-size:10px;font-weight:700;letter-spacing:.1em;color:#a8c897}.result h3{font-size:20px;letter-spacing:-.03em;margin:10px 0}.caption{color:var(--muted);font-size:13px;line-height:1.65;white-space:pre-wrap;max-height:100px;overflow:auto;overflow-wrap:anywhere}.result-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.direct-label{margin:0 0 7px;color:#aeb9a7;font-size:11px}.direct-link-field{display:flex;align-items:center;min-width:0;max-width:100%}.direct-link-field input{width:0;min-width:0;flex:1;border:0;outline:0;background:transparent;color:#c9d7bd;font-size:11px;padding:12px 0;text-overflow:ellipsis}.copy-action{border:0;background:transparent;color:var(--accent);font-size:12px;font-weight:700;padding:12px;cursor:pointer}.download-note,.media-count{color:var(--soft);font-size:11px;line-height:1.6;margin:14px 0 0}.media-list{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding:5px 0 8px}.media-choice{flex:0 0 76px;min-width:0;border:0;background:transparent;color:#b8c1b1;opacity:.7;padding:0 0 5px;cursor:pointer}.media-choice[aria-pressed="true"]{opacity:1;color:var(--accent)}.media-choice img{display:block;width:76px;height:70px;object-fit:cover}.media-choice span{display:block;padding:6px 2px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.media-choice:disabled{cursor:not-allowed;opacity:.45}
+.how-section,.about-section{padding:85px 0 90px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:25px}.section-heading h2,.about-copy h2{font-size:clamp(30px,4vw,43px);letter-spacing:-.05em;line-height:1.15;font-weight:650;margin:14px 0 0}.section-heading>p{font-size:12px;color:var(--soft);margin:0}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:38px;margin-top:44px}.steps article{padding-top:20px}.step-top{font-size:11px;color:#a7b995}.steps h3{font-size:15px;margin:24px 0 10px}.steps p,.about-copy p,.faq p{font-size:13px;line-height:1.75;color:var(--muted);margin:0}.steps p{max-width:260px}.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px}.about-copy h2{margin-bottom:24px}.about-copy p{margin-bottom:14px}.faq summary{position:relative;list-style:none;cursor:pointer;padding:20px 30px 20px 0;font-size:13px;font-weight:650;line-height:1.5}.faq summary::-webkit-details-marker{display:none}.faq summary::after{content:'+';position:absolute;right:2px;top:17px;color:var(--accent);font-size:20px}.faq details[open] summary::after{content:'−'}.faq p{padding:0 20px 20px 0}
+.footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding-top:38px;padding-bottom:40px}.footer-brand .brand{font-size:21px}.footer-brand .brand-mark{width:29px;height:29px;font-size:19px}.footer p{font-size:11px;color:var(--soft);line-height:1.7;margin:9px 0 0}.footer-right{text-align:right}.footer-right a{color:var(--accent);text-decoration:underline;text-underline-offset:4px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible,input:focus-visible,.faq summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:700px){.wrap{width:calc(100% - 40px)}.header{height:76px;gap:15px}.header-nav{gap:15px}.header-nav a:first-child,.header-pill{display:none}.hero{padding:70px 0 75px}.hero h1{font-size:clamp(46px,10vw,64px);margin:20px 0}.hero-copy{font-size:14px;margin-bottom:48px}.input-row{align-items:stretch;flex-direction:column;gap:12px;border:0;padding:0}.input-row input{width:100%;padding:13px 0}.input-row button{width:100%;justify-content:space-between;padding:0 20px}.form-note{font-size:10px}.result{gap:16px}.result-image{width:92px;min-width:92px;height:128px}.result-actions .primary-action{width:100%}.how-section,.about-section{padding:65px 0}.section-heading{display:block}.section-heading>p{margin-top:12px}.steps{grid-template-columns:1fr;gap:28px;margin-top:32px}.steps h3{margin:14px 0 8px}.about-grid{grid-template-columns:1fr;gap:32px}.footer{flex-direction:column;align-items:center;text-align:center}.footer-right{text-align:center}}
 @media(max-width:380px){.result{flex-direction:column}.result-image{width:100%;height:190px}.form-note span:last-child{display:none}}
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}}
-
 ````
 
 ## `public/app.js`
@@ -770,7 +768,6 @@ document.addEventListener('paste', (event) => {
     urlInput.focus();
   } catch { /* unrelated text is left alone */ }
 });
-
 ````
 
 ## `public/icon.svg`
@@ -780,7 +777,6 @@ document.addEventListener('paste', (event) => {
   <rect x="0" y="0" width="512" height="512" rx="155" fill="#d8efab"/>
   <path d="M158 155 L349 346 M349 216 V346 H219" fill="none" stroke="#182014" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
-
 ````
 
 ## `public/site.webmanifest`
@@ -800,7 +796,6 @@ document.addEventListener('paste', (event) => {
     {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
   ]
 }
-
 ````
 
 ## `public/sitemap.xml`
@@ -812,7 +807,6 @@ document.addEventListener('paste', (event) => {
     <loc>https://mahimmazidul.github.io/dlsta/</loc>
   </url>
 </urlset>
-
 ````
 
 ## `public/robots.txt`
@@ -822,7 +816,6 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Sitemap: https://mahimmazidul.github.io/dlsta/sitemap.xml
-
 ````
 
 ## `wrangler.toml`
@@ -831,6 +824,11 @@ Sitemap: https://mahimmazidul.github.io/dlsta/sitemap.xml
 name = "dlsta"
 main = "worker/index.js"
 compatibility_date = "2026-10-30"
+
+# Regional placement is a best-effort mitigation for empty public Instagram responses.
+# It may increase latency and cannot guarantee Instagram availability.
+[placement]
+region = "aws:us-east-1"
 
 [assets]
 directory = "./public"
@@ -843,7 +841,6 @@ binding = "RATE_LIMIT"
 
 [vars]
 ALLOWED_ORIGINS = "*"
-
 ````
 
 ## `package.json`
@@ -889,7 +886,6 @@ ALLOWED_ORIGINS = "*"
   },
   "license": "Apache-2.0"
 }
-
 ````
 
 ## `.github/workflows/cloudflare.yml`
@@ -941,7 +937,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
-
 ````
 
 ## `.github/workflows/pages.yml`
@@ -978,7 +973,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
 ````
 
 ## `README.md`
@@ -1056,6 +1050,10 @@ For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the c
 
 The rate limiter targets **10 API requests per IP per fixed minute**, storing short-lived hashed-IP keys in KV; the Worker fails closed if the binding is missing. KV reads are eventually consistent and list/put is not atomic: concurrent or cross-region requests can exceed the target. KV is not a strict security boundary and incurs usage costs. Use a Durable Object or Cloudflare's rate-limiting product if a hard global limit is required. Set Cloudflare WAF/rate-limit rules for abuse protection, including asset routes. In local development, all clients without `CF-Connecting-IP` share one bucket.
 
+## Regional placement
+
+`wrangler.toml` requests placement near AWS `us-east-1` as a best-effort mitigation for Instagram returning empty public embed data in some Cloudflare regions. The Worker remains on Cloudflare, and media downloads still go directly to Instagram’s CDN. Placement can increase latency for visitors farther away, may change during Cloudflare maintenance, and cannot guarantee that Instagram returns media. You can remove `[placement]` to restore default edge placement or change the region and redeploy. Verify from the affected location; a `cf-placement` header alone does not guarantee the subrequest egress location. See [Cloudflare placement documentation](https://developers.cloudflare.com/workers/configuration/placement/).
+
 ## Troubleshooting lookup failures
 
 Instagram may respond differently by Cloudflare region or over time. If a public post fails, open **Workers & Pages → dlsta → Logs → Live**, then retry it. A failed lookup emits an `Instagram lookup failed:` message containing only stage names, upstream HTTP status codes and broad error categories, including whether an embed has null context or lacks a video URL (not the Instagram URL, cookies, token, caption or media URL). Share only that message when asking for help; Cloudflare's surrounding request log can contain client IP addresses and request headers. A 200 from Instagram does not by itself guarantee a usable media response. See [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
@@ -1084,5 +1082,4 @@ Before promoting the GitHub Pages URL, deploy the Worker and set `WORKER_URL` as
 ## Verification
 
 See `RESEARCH.md` for the repository audit, test results, limitations, and attribution. `test/live-results.json` contains time-sensitive raw responses from the initial comparative tests; signed URLs in those responses will expire. Run `npm test` for offline unit tests. Test results are snapshots, not guarantees of future Instagram behavior.
-
 ````
