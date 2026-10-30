@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false, deferred = false} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
-  for (const id of ['form', 'message', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
+  for (const id of ['form', 'message', 'loading', 'loading-hint', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
     elements[id] = {value: '', textContent: '', hidden: false, dataset: {}, events: {}, firstElementChild: {textContent: ''}, firstChild: {textContent: ''},
       attributes: {}, setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(type, fn) { this.events[type] = fn; }, focus() { this.focused = true; }, select() { this.selected = true; }};
@@ -14,6 +14,9 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   elements.url.value = 'https://www.instagram.com/reel/example/';
   let copied = '';
   const requests = [];
+  let release;
+  const gate = deferred ? new Promise(resolve => { release = resolve; }) : null;
+  let intervalCallback; let cleared = false;
   elements['media-list'].children = [];
   elements['media-list'].replaceChildren = function() { this.children = []; };
   elements['media-list'].appendChild = function(child) { this.children.push(child); };
@@ -21,10 +24,10 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
   const context = {URL, window: {location: {hostname}}, document: doc,
     navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
-    fetch: async url => { requests.push(String(url)); return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'}))); },
-    setTimeout: () => {}};
+    fetch: async url => { requests.push(String(url)); if (gate) await gate; return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'}))); },
+    setTimeout: () => {}, setInterval: callback => { intervalCallback = callback; return 1; }, clearInterval: () => { cleared = true; }};
   vm.runInNewContext(source, context);
-  return {elements, doc, requests, copied: () => copied};
+  return {elements, doc, requests, copied: () => copied, release, tick: () => intervalCallback(), cleared: () => cleared};
 }
 
 test('result presents and copies a direct CDN link', async () => {
@@ -143,6 +146,21 @@ test('successful lookup clears the loading announcement and busy state', async (
   const {elements} = await setup();
   await elements.form.events.submit({preventDefault() {}});
   assert.equal(elements.form.attributes['aria-busy'], 'false');
+  assert.equal(elements.loading.hidden, true);
   assert.equal(elements.message.textContent, '');
   assert.equal(elements.result.hidden, false);
+});
+
+
+test('loading state rotates hints while waiting and clears its timer afterwards', async () => {
+  const {elements, release, tick, cleared} = await setup({deferred:true});
+  const pending = elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements.loading.hidden, false);
+  assert.equal(elements.form.attributes['aria-busy'], 'true');
+  assert.match(elements['loading-hint'].textContent, /Looking/);
+  tick(); assert.match(elements['loading-hint'].textContent, /Carousels/);
+  release(); await pending;
+  assert.equal(elements.loading.hidden, true);
+  assert.equal(elements.form.attributes['aria-busy'], 'false');
+  assert.equal(cleared(), true);
 });

@@ -3,6 +3,8 @@
 const WORKER_URL = '';
 const form = document.querySelector('#form');
 const message = document.querySelector('#message');
+const loading = document.querySelector('#loading');
+const loadingHint = document.querySelector('#loading-hint');
 const result = document.querySelector('#result');
 const submit = document.querySelector('#submit');
 const download = document.querySelector('#download');
@@ -35,8 +37,11 @@ form.addEventListener('submit', async (event) => {
   message.dataset.kind = '';
   submit.disabled = true;
   form.setAttribute('aria-busy', 'true');
-  message.textContent = 'Finding your media…';
-  message.dataset.kind = 'loading';
+  const hints = ['Looking for available media.', 'Carousels can contain multiple items.', 'Still working — some posts take a little longer.', 'Your media opens directly from Instagram.'];
+  let hintIndex = 0;
+  loadingHint.textContent = hints[0];
+  loading.hidden = false;
+  const hintTimer = setInterval(() => { hintIndex = (hintIndex + 1) % hints.length; loadingHint.textContent = hints[hintIndex]; }, 3500);
   submit.firstElementChild.textContent = 'Finding your media…';
   try {
     if (!urlInput.value.trim()) {
@@ -108,7 +113,7 @@ form.addEventListener('submit', async (event) => {
     message.textContent = '';
     message.dataset.kind = '';
   } catch (error) { message.dataset.kind = ''; message.textContent = error.message || 'Something went wrong. Please try again.'; }
-  finally { submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
+  finally { clearInterval(hintTimer); loading.hidden = true; submit.disabled = false; form.setAttribute('aria-busy', 'false'); updateSubmitLabel(); }
 });
 
 copy.addEventListener('click', async () => {

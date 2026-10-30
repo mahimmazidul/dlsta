@@ -11,8 +11,9 @@ const canonical = 'https://mahimmazidul.github.io/dlsta/';
 
 test('canonical, social preview and structured data use the same site URL', async () => {
   const html = await read('index.html');
-  assert.match(html, /<title>dlsta — Instagram Photo, Reel &amp; Video Downloader<\/title>/);
+  assert.match(html, /<title>dlsta — Instagram Downloader<\/title>/);
   assert.ok(html.includes(`<link rel="canonical" href="${canonical}">`));
+  assert.ok(html.includes('<meta property="og:title" content="dlsta — Instagram Downloader">'));
   assert.ok(html.includes(`<meta property="og:url" content="${canonical}">`));
   assert.ok(html.includes(`<meta property="og:image" content="${canonical}images/social-card.png">`));
   assert.ok(html.includes(`<meta name="twitter:image" content="${canonical}images/social-card.png">`));
