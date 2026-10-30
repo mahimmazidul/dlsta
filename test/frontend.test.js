@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null} = {}) {
+async function setup({hostname = 'app.example', clipboard = true, photo = false, payload = null, clipText = '', readFails = false} = {}) {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = {};
   for (const id of ['form', 'message', 'result', 'submit', 'download', 'copy', 'direct-url', 'url', 'image-wrap', 'thumbnail', 'caption', 'result-title', 'media-list', 'media-count']) {
@@ -19,7 +19,7 @@ async function setup({hostname = 'app.example', clipboard = true, photo = false,
   const createElement = () => ({children:[], attributes:{}, events:{}, appendChild(child){this.children.push(child);}, setAttribute(k,v){this.attributes[k]=v;}, addEventListener(k,v){this.events[k]=v;}});
   const doc = {createElement, events: {}, activeElement: null, querySelector: selector => elements[selector.slice(1)], addEventListener(type, fn) { this.events[type] = fn; }};
   const context = {URL, window: {location: {hostname}}, document: doc,
-    navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }}} : {},
+    navigator: clipboard ? {clipboard: {writeText: async value => { copied = value; }, readText: async () => { if (readFails) throw new Error('denied'); return clipText; }}} : {},
     fetch: async url => { requests.push(String(url)); return new Response(JSON.stringify(payload || (photo ? {success:true, mediaType:'photo', mediaUrl:'https://media.fbcdn.net/photo.jpg', thumbnailUrl:'https://media.fbcdn.net/photo.jpg', caption:'A photo'} : {success: true, mediaType:'video', mediaUrl:'https://media.fbcdn.net/video.mp4?x=1', videoUrl: 'https://media.fbcdn.net/video.mp4?x=1', thumbnailUrl: 'https://media.fbcdn.net/thumb.jpg', caption: 'Hello'}))); },
     setTimeout: () => {}};
   vm.runInNewContext(source, context);
@@ -108,4 +108,24 @@ test('carousel shows all items and updates direct link when selected', async () 
   assert.equal(elements.download.href,'https://x.fbcdn.net/3.jpg');
   assert.equal(elements['direct-url'].value,'https://x.fbcdn.net/3.jpg');
   await elements.copy.events.click(); assert.equal(copied(),'https://x.fbcdn.net/3.jpg');
+});
+
+
+test('one-tap paste reads clipboard only on submit and automatically fetches', async () => {
+  const url='https://www.instagram.com/reel/ABC_123/?share=1';
+  const {elements,requests} = await setup({clipText:url});
+  elements.url.value='';
+  await elements.form.events.submit({preventDefault(){}});
+  assert.equal(elements.url.value,url); assert.equal(requests.length,1);
+  assert.equal(elements.result.hidden,false);
+});
+
+test('clipboard denial or invalid clipboard leaves input usable and does not fetch', async () => {
+  for (const opts of [{readFails:true},{clipText:'https://evil.test/reel/example/'}]) {
+    const {elements,requests} = await setup(opts); elements.url.value='';
+    await elements.form.events.submit({preventDefault(){}});
+    assert.equal(requests.length,0); assert.equal(elements.url.focused,true);
+    assert.match(elements.message.textContent,/Clipboard access|valid public Instagram/);
+    assert.equal(elements.submit.disabled,false);
+  }
 });
