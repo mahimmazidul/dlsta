@@ -2,6 +2,11 @@ name = "dlsta"
 main = "worker/index.js"
 compatibility_date = "2026-10-30"
 
+# Regional placement is a best-effort mitigation for empty public Instagram responses.
+# It may increase latency and cannot guarantee Instagram availability.
+[placement]
+region = "aws:us-east-1"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
