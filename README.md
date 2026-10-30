@@ -18,23 +18,23 @@ A small Cloudflare Worker + static UI for resolving **public** Instagram photos,
 1. Create or sign in to your Cloudflare account and sign in to GitHub.
 2. Open **[Deploy dlsta to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/mahimmazidul/dlsta)**. Connect GitHub and authorize the requested access when prompted.
 3. Select the Cloudflare account and follow the prompts to create a repository and configure the Worker. The button typically creates a new repository under your GitHub account; future builds track that new repository, not necessarily this one.
-4. Confirm the `RATE_LIMIT` KV namespace is provisioned and bound. If the UI cannot provision it, use the manual KV instructions below. Choose a distinct Worker name if the suggested name conflicts with an existing Worker.
+4. Confirm the `RATE_LIMIT` KV namespace is provisioned and bound. If the UI cannot provision it, use the manual KV instructions below. Choose `dlsta` as the Worker name in the Cloudflare setup screen (or a distinct name if it conflicts with an existing Worker).
 5. Deploy and wait for the build to finish. Open the provided `https://<worker>.<account>.workers.dev` URL: the Worker serves both the frontend and `/api/scrape`, so no separate frontend configuration is needed there.
 6. Paste a public post or reel URL, choose **Get media link**, and open or copy the direct CDN link. Use your browser’s save option if the media opens in a tab.
 7. If you instead use the separately hosted GitHub Pages frontend, set `WORKER_URL` in `public/app.js` to your deployed HTTPS Worker origin and redeploy Pages, as described below. GitHub Pages cannot run the Worker.
 
-The Worker service name in `wrangler.toml` is **dlsta**, matching the app and package. If you previously deployed `insta-dl`, deploying this configuration creates a **new** `dlsta` Worker; it does not rename or delete the old one. Reconnect any custom domain to the new Worker after testing. If you used the Deploy button earlier, it may have created a separate GitHub repository: update that repository or start a fresh deploy from the current code.
+The default Worker name in `wrangler.toml` is **dlsta**, matching the app and package. This does not rename or delete an existing `insta-dl` Worker. In particular, Cloudflare Workers Builds can override the Wrangler name with the **existing dashboard Worker name**; an existing build connected to `insta-dl` can therefore keep deploying as `insta-dl` even after the file changes. To use `dlsta`, create a new Worker named `dlsta` in Cloudflare and connect it to the current repository (or deploy the latest code manually as described below). Reconnect any custom domain to the new Worker after testing. If you used the Deploy button earlier, it may have created a separate GitHub repository: update that repository or start a fresh deploy from the current code. See [Workers Builds name behavior](https://developers.cloudflare.com/workers/ci-cd/builds/troubleshoot/).
 
 ### Manual deployment (Node.js 22+)
 
 ```sh
 npm ci
 npx wrangler login
-# Recent Wrangler can provision the ID-less RATE_LIMIT binding on deploy.
+# Recent Wrangler provisions the ID-less RATE_LIMIT binding on first deploy.
 npx wrangler deploy
 ```
 
-If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
+Wrangler writes the provisioned namespace ID into the local configuration; dashboard-based provisioning keeps the resource ID in Cloudflare rather than necessarily writing it to your repository. Do not copy another account’s namespace ID. Verify the `RATE_LIMIT` binding on the deployed Worker. If automatic provisioning is unavailable, run `npx wrangler kv namespace create RATE_LIMIT`, then add the returned `id` to the `[[kv_namespaces]]` section in `wrangler.toml` and deploy again. For local development, run `npm test` then `npm run dev`. The Worker serves `public/` as static assets and `/api/*` itself.
 
 ### Add your subdomain
 
@@ -48,7 +48,7 @@ Optional oEmbed: `npx wrangler secret put INSTAGRAM_OEMBED_TOKEN`. Obtain an app
 
 ## Separate frontend
 
-For Cloudflare Pages or GitHub Pages, publish the contents of `public/` as the site root. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages on pushes to `main`. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
+For a separately hosted Cloudflare Pages or GitHub Pages frontend, publish the contents of `public/` as the site root. This is a static frontend only: the root `wrangler.toml` configures a **Worker**, not a Pages Functions project. In `public/app.js`, set `WORKER_URL` to the **HTTPS origin** of the deployed Worker, with no trailing slash. Redeploy the site. Restrict `ALLOWED_ORIGINS` in `wrangler.toml` to a comma-separated list of exact HTTPS frontend origins and redeploy the Worker; the default `*` permits all origins. CORS is not authentication and does not stop non-browser callers. The included `.github/workflows/pages.yml` publishes `public/` to GitHub Pages on pushes to `main`. In repository Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. The site URL is `https://mahimmazidul.github.io/dlsta/` once the workflow succeeds. GitHub Pages cannot run the Worker; deploy that separately.
 
 ## API
 
